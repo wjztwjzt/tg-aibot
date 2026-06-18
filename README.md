@@ -147,6 +147,34 @@ cd tg-aibot
 
 ## 五、配置环境变量
 
+### 方式 A：交互式配置，推荐新手使用
+
+服务器只要装好了 Docker，就可以直接运行这个交互式配置命令：
+
+```bash
+docker run --rm -it -v "$PWD:/app" -w /app node:20-alpine node scripts/setup-env.js
+```
+
+它会一步步提示你填写：
+
+- Telegram `BOT_TOKEN`
+- API 类型：`chat_completions` 或 `responses`
+- `AI_BASE_URL`
+- `AI_API_KEY`
+- `AI_MODEL`
+- 管理员 Telegram 用户 ID
+- 随机发言频率参数
+
+填错会提示重新输入，最后会自动生成 `.env` 文件。
+
+如果服务器已经安装了 Node.js，也可以用：
+
+```bash
+npm run setup
+```
+
+### 方式 B：手动配置
+
 复制配置文件：
 
 ```bash
@@ -164,19 +192,44 @@ nano .env
 ```env
 BOT_TOKEN=你的Telegram机器人Token
 
+AI_API_TYPE=chat_completions
 AI_BASE_URL=https://你的中转站地址/v1
 AI_API_KEY=你的中转站APIKey
 AI_MODEL=你的模型名
 ```
 
-例如：
+例如普通 OpenAI 兼容中转站：
 
 ```env
 BOT_TOKEN=123456789:AAxxxxxx_xxxxxxxxxxxxxxxxx
 
+AI_API_TYPE=chat_completions
 AI_BASE_URL=https://api.example.com/v1
 AI_API_KEY=sk-xxxxxxxxxxxxxxxx
 AI_MODEL=gpt-4o-mini
+```
+
+如果你的中转站给的是 Codex CLI 这种配置：
+
+```toml
+model_provider = "OpenAI"
+model = "gpt-5.5"
+
+[model_providers.OpenAI]
+base_url = "https://openapi.xz.wtf"
+wire_api = "responses"
+```
+
+那么在本项目里应该这样填：
+
+```env
+BOT_TOKEN=123456789:AAxxxxxx_xxxxxxxxxxxxxxxxx
+
+AI_API_TYPE=responses
+AI_BASE_URL=https://openapi.xz.wtf
+AI_API_KEY=你的中转站APIKey
+AI_MODEL=gpt-5.5
+AI_DISABLE_RESPONSE_STORAGE=true
 ```
 
 如果你的中转站给的是完整接口地址，可以这样写：

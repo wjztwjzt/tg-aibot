@@ -1,10 +1,26 @@
 const { DEFAULT_PERSONA } = require('./persona');
 
 const DEFAULT_API_BASE_URL = 'https://api.groq.com/openai/v1';
-const API_BASE_URL = (process.env.AI_BASE_URL || process.env.GROQ_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
-const API_URL = process.env.AI_API_URL || `${API_BASE_URL}/chat/completions`;
+const RAW_API_BASE_URL = process.env.AI_BASE_URL || process.env.GROQ_BASE_URL || DEFAULT_API_BASE_URL;
+const API_TYPE = (process.env.AI_API_TYPE || 'chat_completions').trim().toLowerCase();
 const MODEL = process.env.AI_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY;
+
+function normalizeBaseUrl(baseUrl) {
+  const trimmed = baseUrl.replace(/\/+$/, '');
+  if (/\/v\d+$/.test(trimmed) || /\/openai\/v\d+$/.test(trimmed)) return trimmed;
+  return `${trimmed}/v1`;
+}
+
+function isResponsesApi() {
+  return API_TYPE === 'responses' || API_TYPE === 'response';
+}
+
+function getApiUrl() {
+  if (process.env.AI_API_URL) return process.env.AI_API_URL;
+  const baseUrl = normalizeBaseUrl(RAW_API_BASE_URL);
+  return isResponsesApi() ? `${baseUrl}/responses` : `${baseUrl}/chat/completions`;
+}
 
 function buildTranscript(messages) {
   return messages.map((m) => `${m.fromBot ? '[你]' : m.user}: ${m.text}`).join('\n');
@@ -34,6 +50,47 @@ function parseDecision(raw) {
   }
 }
 
+function getResponsesText(data) {
+  if (typeof data.output_text === 'string') return data.output_text;
+
+  const parts = [];
+  for (const item of data.output || []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === 'string') parts.push(content.text);
+      if (typeof content.output_text === 'string') parts.push(content.output_text);
+    }
+  }
+
+  return parts.join('\n').trim();
+}
+
+function getChatCompletionsText(data) {
+  return data.choices?.[0]?.message?.content || '';
+}
+
+function buildRequestBody(sys, userContent) {
+  if (isResponsesApi()) {
+    return {
+      model: MODEL,
+      instructions: sys,
+      input: userContent,
+      max_output_tokens: 300,
+      temperature: 0.9,
+      store: process.env.AI_DISABLE_RESPONSE_STORAGE === 'true' ? false : undefined,
+    };
+  }
+
+  return {
+    model: MODEL,
+    max_tokens: 300,
+    temperature: 0.9,
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: userContent },
+    ],
+  };
+}
+
 async function decideAndReply({ persona, messages, mode }) {
   const transcript = buildTranscript(messages);
   const sys = `${persona || DEFAULT_PERSONA}
@@ -42,21 +99,14 @@ async function decideAndReply({ persona, messages, mode }) {
 请只输出一个 JSON 对象，不要包含任何其他文字、不要用 markdown 代码块包裹，格式必须是：
 {"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串"}`;
 
-  const body = {
-    model: MODEL,
-    max_tokens: 300,
-    temperature: 0.9,
-    messages: [
-      { role: 'system', content: sys },
-      { role: 'user', content: `最近聊天记录：\n${transcript || '(暂无记录)'}\n\n请给出 JSON。` },
-    ],
-  };
+  const userContent = `最近聊天记录：\n${transcript || '(暂无记录)'}\n\n请给出 JSON。`;
+  const body = buildRequestBody(sys, userContent);
 
   if (!API_KEY) {
     throw new Error('缺少 AI_API_KEY 或 GROQ_API_KEY');
   }
 
-  const resp = await fetch(API_URL, {
+  const resp = await fetch(getApiUrl(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -71,7 +121,7 @@ async function decideAndReply({ persona, messages, mode }) {
   }
 
   const data = await resp.json();
-  const raw = data.choices?.[0]?.message?.content || '';
+  const raw = isResponsesApi() ? getResponsesText(data) : getChatCompletionsText(data);
   return parseDecision(raw);
 }
 

@@ -5,7 +5,8 @@
   "description": "Telegram 群组 AI 气氛活跃机器人",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "setup": "node scripts/setup-env.js"
   },
   "engines": {
     "node": ">=18"

@@ -95,14 +95,18 @@ https://api.example.com/v1/chat/completions
 
 ## 三、服务器安装 Docker
 
-下面以 Ubuntu / Debian 为例。
+先登录你的服务器，然后执行下面命令安装 Docker：
 
-先登录你的服务器，然后执行：
+```bash
+curl -sSL https://get.docker.com | bash
+systemctl enable --now docker
+```
+
+再安装 `git`，后面下载项目要用：
 
 ```bash
 apt update
-apt install -y git docker.io docker-compose-plugin
-systemctl enable --now docker
+apt install -y git
 ```
 
 检查 Docker 是否安装成功：
@@ -113,6 +117,20 @@ docker compose version
 ```
 
 能看到版本号就说明成功。
+
+如果 `docker compose version` 有版本号，后面就使用：
+
+```bash
+docker compose up -d --build
+```
+
+如果你的系统只支持老版 `docker-compose`，则需要把后面的命令改成：
+
+```bash
+docker-compose up -d --build
+```
+
+说明：`https://get.docker.com` 是 Docker 官方提供的便捷安装脚本，适合大多数 Ubuntu / Debian / CentOS 服务器。
 
 ---
 

@@ -3,8 +3,18 @@ const { DEFAULT_PERSONA } = require('./persona');
 const DEFAULT_API_BASE_URL = 'https://api.groq.com/openai/v1';
 const RAW_API_BASE_URL = process.env.AI_BASE_URL || process.env.GROQ_BASE_URL || DEFAULT_API_BASE_URL;
 const API_TYPE = (process.env.AI_API_TYPE || 'chat_completions').trim().toLowerCase();
-const MODEL = process.env.AI_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = process.env.AI_MODEL || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY;
+
+function envInt(name, defaultValue) {
+  const value = parseInt(process.env[name] || String(defaultValue), 10);
+  return Number.isFinite(value) && value > 0 ? value : defaultValue;
+}
+
+const MAX_CONTEXT_MESSAGES = envInt('AI_MAX_CONTEXT_MESSAGES', 12);
+const MAX_INPUT_CHARS = envInt('AI_MAX_INPUT_CHARS', 1500);
+const MAX_MESSAGE_CHARS = envInt('AI_MAX_MESSAGE_CHARS', 160);
+const MAX_OUTPUT_TOKENS = envInt('AI_MAX_OUTPUT_TOKENS', 120);
 
 function normalizeBaseUrl(baseUrl) {
   const trimmed = baseUrl.replace(/\/+$/, '');
@@ -22,18 +32,44 @@ function getApiUrl() {
   return isResponsesApi() ? `${baseUrl}/responses` : `${baseUrl}/chat/completions`;
 }
 
+function truncateText(text, maxChars) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}…`;
+}
+
+function getModelForMode(mode) {
+  if (mode === 'random' && process.env.AI_MODEL_RANDOM) return process.env.AI_MODEL_RANDOM;
+  if (mode === 'idle' && process.env.AI_MODEL_IDLE) return process.env.AI_MODEL_IDLE;
+  return DEFAULT_MODEL;
+}
+
 function buildTranscript(messages) {
-  return messages.map((m) => `${m.fromBot ? '[你]' : m.user}: ${m.text}`).join('\n');
+  const recentMessages = messages.slice(-MAX_CONTEXT_MESSAGES);
+  const lines = [];
+  let totalChars = 0;
+
+  for (const m of recentMessages.reverse()) {
+    const user = truncateText(m.fromBot ? '[你]' : m.user, 24);
+    const text = truncateText(m.text, MAX_MESSAGE_CHARS);
+    const line = `${user}: ${text}`;
+
+    if (totalChars + line.length > MAX_INPUT_CHARS) break;
+    lines.unshift(line);
+    totalChars += line.length;
+  }
+
+  return lines.join('\n');
 }
 
 function buildInstruction(mode) {
   if (mode === 'mention') {
-    return '群里有人直接 @ 你或回复了你的消息，请基于上下文给出回复。';
+    return '群里有人直接 @ 你或回复了你的消息，请基于上下文给出简短回复。';
   }
   if (mode === 'idle') {
-    return '群里已经安静了一段时间，请基于最近的话题抛出一个能让大家继续聊下去的话题或问题；如果完全没有上下文，可以随便起个轻松的话题。';
+    return '群里已经安静了一段时间，请基于最近的话题抛出一个简短、轻松、能让大家继续聊下去的话题；如果完全没有上下文，可以随便起个轻松话题。';
   }
-  return '这是群里正常的闲聊，你可以选择插一句话，也可以选择不说话（如果没有特别合适接的内容，倾向于不说话）。';
+  return '这是群里正常的闲聊，你可以选择简短插一句话，也可以选择不说话（如果没有特别合适接的内容，倾向于不说话）。';
 }
 
 function parseDecision(raw) {
@@ -42,10 +78,10 @@ function parseDecision(raw) {
     const parsed = JSON.parse(cleaned);
     return {
       shouldReply: Boolean(parsed.should_reply),
-      reply: (parsed.reply || '').trim(),
+      reply: truncateText(parsed.reply || '', 300),
     };
   } catch (e) {
-    const fallback = raw.trim();
+    const fallback = truncateText(raw.trim(), 300);
     return { shouldReply: fallback.length > 0, reply: fallback };
   }
 }
@@ -68,22 +104,24 @@ function getChatCompletionsText(data) {
   return data.choices?.[0]?.message?.content || '';
 }
 
-function buildRequestBody(sys, userContent) {
+function buildRequestBody({ sys, userContent, mode }) {
+  const model = getModelForMode(mode);
+
   if (isResponsesApi()) {
     return {
-      model: MODEL,
+      model,
       instructions: sys,
       input: userContent,
-      max_output_tokens: 300,
-      temperature: 0.9,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      temperature: 0.8,
       store: process.env.AI_DISABLE_RESPONSE_STORAGE === 'true' ? false : undefined,
     };
   }
 
   return {
-    model: MODEL,
-    max_tokens: 300,
-    temperature: 0.9,
+    model,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    temperature: 0.8,
     messages: [
       { role: 'system', content: sys },
       { role: 'user', content: userContent },
@@ -97,10 +135,11 @@ async function decideAndReply({ persona, messages, mode }) {
 
 你会看到最近的群聊记录。${buildInstruction(mode)}
 请只输出一个 JSON 对象，不要包含任何其他文字、不要用 markdown 代码块包裹，格式必须是：
-{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串"}`;
+{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串"}
+回复必须短，通常不要超过 40 个中文字。`;
 
   const userContent = `最近聊天记录：\n${transcript || '(暂无记录)'}\n\n请给出 JSON。`;
-  const body = buildRequestBody(sys, userContent);
+  const body = buildRequestBody({ sys, userContent, mode });
 
   if (!API_KEY) {
     throw new Error('缺少 AI_API_KEY 或 GROQ_API_KEY');

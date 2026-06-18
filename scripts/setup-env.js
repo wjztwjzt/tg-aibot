@@ -12,25 +12,70 @@ function ask(question) {
   });
 }
 
+function section(title, description) {
+  console.log('\n' + '='.repeat(60));
+  console.log(title);
+  console.log('='.repeat(60));
+  if (description) console.log(description + '\n');
+}
+
 function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, '');
 }
 
-async function askRequired({ question, validate, error }) {
+function quoteEnv(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  if (!/[\s#"'\\]/.test(text)) return text;
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+}
+
+async function askRequired({ title, description, question, validate, error }) {
+  if (title) section(title, description);
   while (true) {
     const answer = await ask(question);
     if (validate(answer)) return answer;
-    console.log(error);
+    console.log(`❌ ${error}\n`);
   }
 }
 
-async function askOptional({ question, defaultValue = '', validate, error }) {
+async function askOptional({ title, description, question, defaultValue = '', validate, error }) {
+  if (title) section(title, description);
   while (true) {
-    const answer = await ask(defaultValue ? `${question}（默认：${defaultValue}）: ` : `${question}: `);
+    const prompt = defaultValue ? `${question}\n默认值：${defaultValue}\n直接回车使用默认值：` : `${question}\n直接回车留空：`;
+    const answer = await ask(prompt);
     const value = answer || defaultValue;
     if (!validate || validate(value)) return value;
-    console.log(error);
+    console.log(`❌ ${error}\n`);
   }
+}
+
+async function askYesNo({ title, description, question, defaultValue = 'no' }) {
+  const value = await askOptional({
+    title,
+    description,
+    question: `${question} 输入 yes 或 no`,
+    defaultValue,
+    validate: (answer) => ['yes', 'no'].includes(answer.toLowerCase()),
+    error: '请输入 yes 或 no。',
+  });
+  return value.toLowerCase() === 'yes';
+}
+
+async function askMultiline({ title, description }) {
+  section(title, description);
+  console.log('请输入自定义人设，可以输入多行。');
+  console.log('输入完成后，单独输入一行 END，然后回车。');
+  console.log('如果想取消自定义人设，直接输入 END。\n');
+
+  const lines = [];
+  while (true) {
+    const line = await ask('> ');
+    if (line === 'END') break;
+    lines.push(line);
+  }
+
+  return lines.join('\n').trim();
 }
 
 function isValidUrl(value) {
@@ -59,149 +104,251 @@ function isCommaSeparatedIds(value) {
 
 function buildEnv(config) {
   return `# 从 @BotFather 获取
-BOT_TOKEN=${config.botToken}
+BOT_TOKEN=${quoteEnv(config.botToken)}
 
 # AI 接口配置
 # chat_completions：大多数 OpenAI 兼容中转站使用这个
 # responses：Codex CLI 里 wire_api = "responses" 时使用这个
-AI_API_TYPE=${config.apiType}
-AI_BASE_URL=${config.baseUrl}
-AI_API_KEY=${config.apiKey}
-AI_MODEL=${config.model}
-AI_DISABLE_RESPONSE_STORAGE=${config.disableResponseStorage}
+AI_API_TYPE=${quoteEnv(config.apiType)}
+AI_BASE_URL=${quoteEnv(config.baseUrl)}
+AI_API_KEY=${quoteEnv(config.apiKey)}
+AI_MODEL=${quoteEnv(config.model)}
+# 随机插话、冷场复活可以单独指定更便宜的模型；留空则使用 AI_MODEL
+AI_MODEL_RANDOM=${quoteEnv(config.randomModel)}
+AI_MODEL_IDLE=${quoteEnv(config.idleModel)}
+AI_DISABLE_RESPONSE_STORAGE=${quoteEnv(config.disableResponseStorage)}
+
+# 省钱配置：限制每次请求带多少上下文和最多输出多少 token
+AI_MAX_CONTEXT_MESSAGES=${quoteEnv(config.maxContextMessages)}
+AI_MAX_INPUT_CHARS=${quoteEnv(config.maxInputChars)}
+AI_MAX_MESSAGE_CHARS=${quoteEnv(config.maxMessageChars)}
+AI_MAX_OUTPUT_TOKENS=${quoteEnv(config.maxOutputTokens)}
 
 # 手动管理员白名单，多个用户 ID 用英文逗号分隔；在群里发送 /my_id 可以查看自己的用户 ID
-ADMIN_USER_IDS=${config.adminUserIds}
+ADMIN_USER_IDS=${quoteEnv(config.adminUserIds)}
 
 # 如果你的中转站给的是完整接口地址，也可以不用 AI_BASE_URL，直接填：
 # AI_API_URL=https://example.com/v1/chat/completions
 
-# 留空则使用 src/persona.js 中的默认人设
-PERSONA_PROMPT=
+# 人设：留空则使用 src/persona.js 中的默认人设
+PERSONA_PROMPT=${quoteEnv(config.personaPrompt)}
 
 # 普通消息中随机插话的概率 (0-1)
-RANDOM_REPLY_CHANCE=${config.randomReplyChance}
+RANDOM_REPLY_CHANCE=${quoteEnv(config.randomReplyChance)}
 
 # 两次"主动"发言之间最少间隔多少秒
-MIN_REPLY_INTERVAL_SECONDS=${config.minReplyIntervalSeconds}
+MIN_REPLY_INTERVAL_SECONDS=${quoteEnv(config.minReplyIntervalSeconds)}
 
 # 距离上次发言至少要再过多少条群消息才会考虑再次随机插话
-MIN_MSGS_BETWEEN_REPLIES=${config.minMsgsBetweenReplies}
+MIN_MSGS_BETWEEN_REPLIES=${quoteEnv(config.minMsgsBetweenReplies)}
 
 # 群里冷场超过多少分钟后考虑主动发话复活气氛
-IDLE_THRESHOLD_MINUTES=${config.idleThresholdMinutes}
+IDLE_THRESHOLD_MINUTES=${quoteEnv(config.idleThresholdMinutes)}
 
 # 两次冷场复活发言之间最少间隔多少分钟，防止刷屏
-IDLE_COOLDOWN_MINUTES=${config.idleCooldownMinutes}
+IDLE_COOLDOWN_MINUTES=${quoteEnv(config.idleCooldownMinutes)}
 
-# 每个群最多缓存多少条历史消息作为上下文
-MAX_HISTORY=${config.maxHistory}
+# 每个群最多缓存多少条历史消息作为上下文；真正发给 AI 的条数还会受 AI_MAX_CONTEXT_MESSAGES 限制
+MAX_HISTORY=${quoteEnv(config.maxHistory)}
 `;
 }
 
 async function main() {
   console.log('Telegram 群组 AI 机器人交互式配置');
-  console.log('按提示填写，填错会提示重新输入。\n');
+  console.log('按提示填写，填错会提示重新输入。');
+  console.log('如果不懂某个参数，通常直接回车使用默认值即可。');
 
   if (fs.existsSync('.env')) {
-    const overwrite = await askOptional({
-      question: '检测到当前目录已有 .env，是否覆盖？输入 yes 覆盖，输入 no 退出',
+    const overwrite = await askYesNo({
+      title: '检测到已有 .env',
+      description: '当前目录已经有 .env。覆盖会重新生成配置；不覆盖则退出。',
+      question: '是否覆盖现有 .env？',
       defaultValue: 'no',
-      validate: (value) => ['yes', 'no'].includes(value.toLowerCase()),
-      error: '请输入 yes 或 no',
     });
 
-    if (overwrite.toLowerCase() !== 'yes') {
+    if (!overwrite) {
       console.log('已取消，没有修改 .env。');
-      rl.close();
       return;
     }
   }
 
   const botToken = await askRequired({
-    question: '请输入 Telegram BOT_TOKEN: ',
+    title: '1. Telegram Bot Token',
+    description: '从 Telegram 的 @BotFather 创建机器人后获得。格式通常是 数字:一长串字符。这个填错机器人无法启动。',
+    question: '请输入 BOT_TOKEN: ',
     validate: (value) => /^\d+:[A-Za-z0-9_-]{20,}$/.test(value),
-    error: 'BOT_TOKEN 格式不对，应该类似 123456789:AAxxxxxxxxxxxxxxxxxxxx，请重新输入。',
+    error: 'BOT_TOKEN 格式不对，应该类似 123456789:AAxxxxxxxxxxxxxxxxxxxx。',
   });
 
   const apiType = await askOptional({
-    question: '请选择 API 类型，输入 chat_completions 或 responses',
+    title: '2. API 类型',
+    description: '大多数中转站选 chat_completions。如果你的 Codex CLI 配置里写着 wire_api = "responses"，就选 responses。',
+    question: '请输入 API 类型：chat_completions 或 responses',
     defaultValue: 'chat_completions',
     validate: (value) => ['chat_completions', 'responses'].includes(value.toLowerCase()),
-    error: '只能输入 chat_completions 或 responses。Codex CLI 配置里 wire_api = "responses" 就选 responses。',
+    error: '只能输入 chat_completions 或 responses。',
   });
 
   const baseUrlInput = await askRequired({
-    question: '请输入 AI_BASE_URL，例如 https://api.example.com/v1 或 https://openapi.xz.wtf: ',
+    title: '3. API Base URL',
+    description: '中转站后台提供的接口地址。可以填 https://api.example.com/v1，也可以填 https://openapi.xz.wtf；程序会自动补 /v1。',
+    question: '请输入 AI_BASE_URL: ',
     validate: isValidUrl,
-    error: 'URL 格式不对，必须以 http:// 或 https:// 开头，请重新输入。',
+    error: 'URL 格式不对，必须以 http:// 或 https:// 开头。',
   });
 
   const apiKey = await askRequired({
+    title: '4. API Key',
+    description: '中转站或模型平台提供的 Key。这个填错会出现 401 / 403。',
     question: '请输入 AI_API_KEY: ',
     validate: (value) => value.length >= 8 && !/\s/.test(value),
-    error: 'API Key 看起来不对，至少 8 个字符且不能包含空格，请重新输入。',
+    error: 'API Key 看起来不对，至少 8 个字符且不能包含空格。',
   });
 
   const model = await askRequired({
+    title: '5. 主模型 AI_MODEL',
+    description: '被 @ 或回复机器人时主要使用这个模型。贵模型可以放这里，保证回复质量。',
     question: '请输入 AI_MODEL，例如 gpt-4o-mini / gpt-5.5 / llama-3.3-70b-versatile: ',
     validate: (value) => value.length >= 2 && !/\s/.test(value),
-    error: '模型名不能为空，也不能包含空格，请重新输入。',
+    error: '模型名不能为空，也不能包含空格。',
+  });
+
+  const randomModel = await askOptional({
+    title: '6. 随机插话模型 AI_MODEL_RANDOM',
+    description: '随机插话会更频繁，建议用便宜模型省钱。留空表示随机插话也使用主模型。',
+    question: '请输入随机插话模型名，例如 gpt-4o-mini；不想单独设置就留空',
+    defaultValue: '',
+    validate: (value) => value === '' || (value.length >= 2 && !/\s/.test(value)),
+    error: '模型名不能包含空格；不想单独设置就直接回车。',
+  });
+
+  const idleModel = await askOptional({
+    title: '7. 冷场复活模型 AI_MODEL_IDLE',
+    description: '冷场主动抛话题也可以用便宜模型。默认跟随机插话模型一样；如果随机插话模型也留空，则使用主模型。',
+    question: '请输入冷场复活模型名；不想单独设置就留空',
+    defaultValue: randomModel,
+    validate: (value) => value === '' || (value.length >= 2 && !/\s/.test(value)),
+    error: '模型名不能包含空格；不想单独设置就直接回车。',
   });
 
   const disableResponseStorage = await askOptional({
-    question: '是否禁用 Responses API 响应存储？输入 true 或 false',
+    title: '8. 是否禁用 Responses API 响应存储',
+    description: '对应 Codex CLI 的 disable_response_storage。建议 true，表示请求时带 store:false，隐私更稳。如果中转站报 unknown parameter: store，再改成 false。',
+    question: '请输入 true 或 false',
     defaultValue: 'true',
     validate: (value) => ['true', 'false'].includes(value.toLowerCase()),
     error: '请输入 true 或 false。',
   });
 
+  const customizePersona = await askYesNo({
+    title: '9. 人设 PERSONA_PROMPT',
+    description: '人设决定机器人说话风格。建议先用默认人设；想改成毒舌、可爱、方言、二次元等风格时再自定义。',
+    question: '是否现在自定义人设？',
+    defaultValue: 'no',
+  });
+
+  let personaPrompt = '';
+  if (customizePersona) {
+    personaPrompt = await askMultiline({
+      title: '自定义人设',
+      description: '例子：你是群里的普通群友，说话简短、活泼、偶尔吐槽，不要暴露自己是 AI。',
+    });
+  }
+
   const adminUserIds = await askOptional({
-    question: '请输入管理员 Telegram 用户 ID，多个用英文逗号分隔；不知道可以先留空，启动后在群里发 /my_id 再补',
+    title: '10. 管理员白名单 ADMIN_USER_IDS',
+    description: '如果 Telegram 管理员判断失效，可以把你的用户 ID 写这里。启动后在群里发 /my_id 可以查看 ID。多个 ID 用英文逗号分隔。',
+    question: '请输入管理员 Telegram 用户 ID；不知道就留空',
     defaultValue: '',
     validate: isCommaSeparatedIds,
     error: '管理员 ID 只能是数字，多个 ID 用英文逗号分隔，例如 123456789,987654321。',
   });
 
-  console.log('\n下面是发言频率配置。不懂就直接回车使用默认值。');
+  const maxContextMessages = await askOptional({
+    title: '11. 省钱：上下文消息条数 AI_MAX_CONTEXT_MESSAGES',
+    description: '每次请求最多带最近多少条聊天记录。越大越懂上下文，但越贵。建议 8-12。',
+    question: '请输入每次请求最多带多少条上下文消息',
+    defaultValue: '12',
+    validate: (value) => isIntegerText(value) && Number(value) >= 1,
+    error: '请输入大于等于 1 的整数。',
+  });
+
+  const maxInputChars = await askOptional({
+    title: '12. 省钱：上下文总字符数 AI_MAX_INPUT_CHARS',
+    description: '每次发给 AI 的聊天记录最多多少字符。越小越省钱。建议 1000-1500。',
+    question: '请输入每次请求上下文最多多少字符',
+    defaultValue: '1500',
+    validate: (value) => isIntegerText(value) && Number(value) >= 200,
+    error: '请输入大于等于 200 的整数。',
+  });
+
+  const maxMessageChars = await askOptional({
+    title: '13. 省钱：单条消息最大字符数 AI_MAX_MESSAGE_CHARS',
+    description: '群友发很长一段话时，只截取前面一部分发给 AI。建议 120-160。',
+    question: '请输入单条群消息最多保留多少字符',
+    defaultValue: '160',
+    validate: (value) => isIntegerText(value) && Number(value) >= 20,
+    error: '请输入大于等于 20 的整数。',
+  });
+
+  const maxOutputTokens = await askOptional({
+    title: '14. 省钱：输出上限 AI_MAX_OUTPUT_TOKENS',
+    description: 'AI 每次最多输出多少 token。群聊机器人不需要长篇大论，建议 80-120。',
+    question: '请输入 AI 每次最多输出多少 token',
+    defaultValue: '120',
+    validate: (value) => isIntegerText(value) && Number(value) >= 20,
+    error: '请输入大于等于 20 的整数。',
+  });
 
   const randomReplyChance = await askOptional({
-    question: '随机插话概率，建议 0.02，新手不要超过 0.05',
+    title: '15. 随机插话概率 RANDOM_REPLY_CHANCE',
+    description: '普通群聊时机器人随机插话的概率。越大越活跃，也越吵、越费钱。建议 0.02；不要像 0.8 那样太高。',
+    question: '请输入随机插话概率，范围 0 到 1',
     defaultValue: '0.02',
     validate: (value) => isNumberInRange(value, 0, 1),
     error: '请输入 0 到 1 之间的数字，例如 0.02。',
   });
 
   const minReplyIntervalSeconds = await askOptional({
-    question: '两次主动发言最少间隔秒数',
+    title: '16. 主动发言冷却 MIN_REPLY_INTERVAL_SECONDS',
+    description: '两次主动发言之间至少隔多少秒。越大越省钱，也越不吵。建议 180。',
+    question: '请输入两次主动发言最少间隔秒数',
     defaultValue: '180',
     validate: (value) => isIntegerText(value) && Number(value) >= 0,
     error: '请输入大于等于 0 的整数。',
   });
 
   const minMsgsBetweenReplies = await askOptional({
-    question: '距离上次发言至少间隔多少条群消息',
+    title: '17. 消息间隔 MIN_MSGS_BETWEEN_REPLIES',
+    description: '机器人说完话后，至少再过多少条群消息才会考虑随机插话。建议 5。',
+    question: '请输入距离上次发言至少间隔多少条群消息',
     defaultValue: '5',
     validate: (value) => isIntegerText(value) && Number(value) >= 0,
     error: '请输入大于等于 0 的整数。',
   });
 
   const idleThresholdMinutes = await askOptional({
-    question: '群里安静多少分钟后尝试主动抛话题',
+    title: '18. 冷场阈值 IDLE_THRESHOLD_MINUTES',
+    description: '群里安静多久后机器人尝试主动抛话题。建议 30 分钟。',
+    question: '请输入群里安静多少分钟后尝试主动抛话题',
     defaultValue: '30',
     validate: (value) => isIntegerText(value) && Number(value) >= 1,
     error: '请输入大于等于 1 的整数。',
   });
 
   const idleCooldownMinutes = await askOptional({
-    question: '两次冷场发言之间最少间隔多少分钟',
+    title: '19. 冷场发言冷却 IDLE_COOLDOWN_MINUTES',
+    description: '两次冷场主动发言之间至少隔多少分钟。建议 120 分钟。',
+    question: '请输入两次冷场发言之间最少间隔多少分钟',
     defaultValue: '120',
     validate: (value) => isIntegerText(value) && Number(value) >= 1,
     error: '请输入大于等于 1 的整数。',
   });
 
   const maxHistory = await askOptional({
-    question: '每个群最多缓存多少条历史消息',
+    title: '20. 内存历史 MAX_HISTORY',
+    description: '每个群在内存里最多保存多少条历史消息。它不等于每次都发给 AI；真正发给 AI 的数量受 AI_MAX_CONTEXT_MESSAGES 限制。建议 25。',
+    question: '请输入每个群最多缓存多少条历史消息',
     defaultValue: '25',
     validate: (value) => isIntegerText(value) && Number(value) >= 1,
     error: '请输入大于等于 1 的整数。',
@@ -213,8 +360,15 @@ async function main() {
     baseUrl: normalizeBaseUrl(baseUrlInput),
     apiKey,
     model,
+    randomModel,
+    idleModel,
     disableResponseStorage: disableResponseStorage.toLowerCase(),
+    maxContextMessages,
+    maxInputChars,
+    maxMessageChars,
+    maxOutputTokens,
     adminUserIds,
+    personaPrompt,
     randomReplyChance,
     minReplyIntervalSeconds,
     minMsgsBetweenReplies,
@@ -224,7 +378,7 @@ async function main() {
   });
 
   fs.writeFileSync('.env', env);
-  console.log('\n配置完成，已生成 .env。');
+  console.log('\n✅ 配置完成，已生成 .env。');
   console.log('现在可以执行：');
   console.log('docker compose up -d --build');
 }

@@ -91,6 +91,36 @@ https://api.example.com/v1/chat/completions
 
 通常情况下，只需要填 `AI_BASE_URL`，不用填 `AI_API_URL`。
 
+### 使用 Groq 免费 API
+
+如果你暂时没有中转站，也可以先用 Groq 免费 API 测试。
+
+1. 打开 Groq Console：
+
+   ```text
+   https://console.groq.com
+   ```
+
+2. 注册或登录账号。
+3. 进入 API Keys 页面，创建一个新的 API Key。
+4. 复制 API Key，填到 `.env` 的 `AI_API_KEY`。
+5. Groq 的模型列表可以看官方文档：
+
+   ```text
+   https://console.groq.com/docs/models
+   ```
+
+Groq 示例配置：
+
+```env
+AI_API_TYPE=chat_completions
+AI_BASE_URL=https://api.groq.com/openai/v1
+AI_API_KEY=你的GroqApiKey
+AI_MODEL=llama-3.3-70b-versatile
+```
+
+如果 `llama-3.3-70b-versatile` 不可用，就去 Groq 模型文档里换一个当前可用的模型名。
+
 ---
 
 ## 三、服务器安装 Docker
@@ -254,6 +284,17 @@ AI_MODEL=gpt-4o-mini
 为了避免机器人太吵，也为了省中转站额度，建议一开始这样配置：
 
 ```env
+# 省钱：限制每次发给 AI 的上下文和输出长度
+AI_MAX_CONTEXT_MESSAGES=12
+AI_MAX_INPUT_CHARS=1500
+AI_MAX_MESSAGE_CHARS=160
+AI_MAX_OUTPUT_TOKENS=120
+
+# 随机插话、冷场复活可以用便宜模型；留空则使用 AI_MODEL
+AI_MODEL_RANDOM=
+AI_MODEL_IDLE=
+
+# 降低主动发言频率
 RANDOM_REPLY_CHANCE=0.02
 MIN_REPLY_INTERVAL_SECONDS=180
 MIN_MSGS_BETWEEN_REPLIES=5
@@ -266,12 +307,18 @@ MAX_HISTORY=25
 
 | 配置项 | 说明 |
 | --- | --- |
-| `RANDOM_REPLY_CHANCE` | 普通聊天时随机插话概率，越大越活跃 |
+| `AI_MAX_CONTEXT_MESSAGES` | 每次请求最多带最近多少条聊天记录，越大越懂上下文但越费钱 |
+| `AI_MAX_INPUT_CHARS` | 每次请求最多发送多少字符的上下文，越小越省钱 |
+| `AI_MAX_MESSAGE_CHARS` | 单条群消息最多保留多少字符，防止长消息烧 token |
+| `AI_MAX_OUTPUT_TOKENS` | AI 每次最多输出多少 token，群聊建议 80-120 |
+| `AI_MODEL_RANDOM` | 随机插话单独使用的模型，可以填便宜模型 |
+| `AI_MODEL_IDLE` | 冷场复活单独使用的模型，可以填便宜模型 |
+| `RANDOM_REPLY_CHANCE` | 普通聊天时随机插话概率，越大越活跃，也越费钱 |
 | `MIN_REPLY_INTERVAL_SECONDS` | 两次主动发言最少间隔多少秒 |
 | `MIN_MSGS_BETWEEN_REPLIES` | 距离上次发言至少过多少条群消息才会再次插话 |
 | `IDLE_THRESHOLD_MINUTES` | 群里安静多久后尝试主动抛话题 |
 | `IDLE_COOLDOWN_MINUTES` | 两次冷场发言之间的最少间隔 |
-| `MAX_HISTORY` | 每个群最多保留多少条历史消息作为上下文 |
+| `MAX_HISTORY` | 每个群内存里最多保存多少条历史消息，不代表每次都发给 AI |
 
 如果觉得机器人太安静，可以慢慢把 `RANDOM_REPLY_CHANCE` 调高，比如：
 
@@ -358,12 +405,54 @@ docker compose logs -f
 
 ## 九、更新项目
 
-如果后面仓库有更新，在服务器项目目录执行：
+### 服务器更新代码
+
+如果 GitHub 仓库有更新，登录服务器后进入项目目录：
+
+```bash
+cd ~/tg-aibot
+```
+
+拉取最新代码：
 
 ```bash
 git pull
+```
+
+重新构建并启动：
+
+```bash
 docker compose up -d --build
 ```
+
+查看日志：
+
+```bash
+docker compose logs -f
+```
+
+如果你的系统使用老版 `docker-compose`，就把命令换成：
+
+```bash
+docker-compose up -d --build
+docker-compose logs -f
+```
+
+### 本地电脑更新代码
+
+如果你本地电脑也 clone 了这个项目，进入本地项目目录后执行：
+
+```bash
+git pull
+```
+
+如果你本地改过文件，`git pull` 提示冲突，可以先查看改了哪些：
+
+```bash
+git status
+```
+
+不懂怎么处理冲突时，不要直接删除文件，把报错复制出来再问。
 
 ---
 
@@ -495,6 +584,10 @@ AI_MODEL=
 可以把参数调低：
 
 ```env
+AI_MAX_CONTEXT_MESSAGES=8
+AI_MAX_INPUT_CHARS=1000
+AI_MAX_MESSAGE_CHARS=120
+AI_MAX_OUTPUT_TOKENS=80
 RANDOM_REPLY_CHANCE=0.01
 MIN_REPLY_INTERVAL_SECONDS=300
 MIN_MSGS_BETWEEN_REPLIES=8
@@ -517,7 +610,53 @@ docker ps
 
 ---
 
-## 十二、安全注意事项
+## 十二、修改机器人说话人设
+
+机器人默认人设在 `src/persona.js`，但不建议新手直接改代码。更推荐改 `.env` 里的：
+
+```env
+PERSONA_PROMPT=
+```
+
+### 方法一：用交互式配置修改
+
+重新运行配置脚本：
+
+```bash
+docker run --rm -it -v "$PWD:/app" -w /app node:20-alpine node scripts/setup-env.js
+```
+
+到“人设 PERSONA_PROMPT”这一步时，选择自定义，然后输入你想要的人设。
+
+### 方法二：手动修改 `.env`
+
+```bash
+nano .env
+```
+
+例如改成可爱风：
+
+```env
+PERSONA_PROMPT="你是群里的可爱猫娘群友，说话简短、活泼、偶尔撒娇，但不要每句话都喵，也不要暴露自己是 AI。"
+```
+
+例如改成毒舌风：
+
+```env
+PERSONA_PROMPT="你是群里的普通群友，说话简短、带点毒舌和吐槽，但不要攻击人，不要骂脏话，不要暴露自己是 AI。"
+```
+
+修改后重启：
+
+```bash
+docker compose restart
+```
+
+注意：人设不要写太长。越长每次请求越费 token，也越贵。
+
+---
+
+## 十三、安全注意事项
 
 - 不要把 `.env` 发给别人。
 - 不要把 `.env` 上传到 GitHub。
@@ -527,7 +666,7 @@ docker ps
 
 ---
 
-## 十三、工作原理简述
+## 十四、工作原理简述
 
 机器人会把每个群最近的若干条文字消息缓存在内存里，作为上下文发给模型。
 
@@ -552,3 +691,28 @@ docker ps
 - 使用 SQLite 持久化群配置和上下文
 - 支持图片、贴纸、语音消息
 - 增加限流退避，遇到 429 自动降低发言频率
+
+---
+
+## AI 中转站推荐
+
+如果你需要 AI 中转站，可以看看这个：
+
+```text
+https://openapi.xz.wtf/register?aff=C6ACRK5UC9RR
+```
+
+特点：
+
+- 价格便宜
+- `1 CNY = 2 USD` 额度
+- Claude Max 号池 1x
+- Claude Code 纯 Max 号池 1x
+- ChatGPT Plus 号池 0.5x
+- 剩余价值无条件退款保障
+
+如果不想使用邀请链接，把地址里的 `?aff=C6ACRK5UC9RR` 删除即可：
+
+```text
+https://openapi.xz.wtf/register
+```

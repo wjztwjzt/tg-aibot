@@ -18,16 +18,50 @@ const IDLE_THRESHOLD_MS = parseInt(process.env.IDLE_THRESHOLD_MINUTES || '20', 1
 const IDLE_COOLDOWN_MS = parseInt(process.env.IDLE_COOLDOWN_MINUTES || '60', 10) * 60 * 1000;
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
 
+function getManualAdminIds() {
+  return (process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 async function isAdmin(ctx) {
+  const fromId = ctx.from?.id?.toString();
+  const manualAdminIds = getManualAdminIds();
+
+  if (fromId && manualAdminIds.includes(fromId)) return true;
+
+  // Telegram 群开启“匿名管理员”时，消息来源会变成群本身，ctx.from 不再是真实管理员账号。
+  // 这种情况下 sender_chat.id 等于当前 chat.id，可以视为管理员操作。
+  if (ctx.message?.sender_chat?.id && ctx.message.sender_chat.id === ctx.chat.id) {
+    return true;
+  }
+
+  if (!fromId || !ctx.chat?.id || ctx.chat.type === 'private') return false;
+
   try {
-    const member = await ctx.getChatMember(ctx.from.id);
-    return ['administrator', 'creator'].includes(member.status);
+    const member = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
+    if (['administrator', 'creator'].includes(member.status)) return true;
   } catch (e) {
+    console.error('检查管理员身份失败:', e.message);
+  }
+
+  try {
+    const admins = await ctx.telegram.getChatAdministrators(ctx.chat.id);
+    return admins.some((admin) => admin.user?.id?.toString() === fromId);
+  } catch (e) {
+    console.error('获取管理员列表失败:', e.message);
     return false;
   }
 }
 
 // ---- 管理员指令 ----
+
+bot.command('my_id', async (ctx) => {
+  const userId = ctx.from?.id;
+  if (!userId) return ctx.reply('没有获取到你的用户 ID');
+  ctx.reply(`你的 Telegram 用户 ID 是：${userId}\n如果管理员判断失效，可以把它填进 .env 的 ADMIN_USER_IDS`);
+});
 
 bot.command('ai_on', async (ctx) => {
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');

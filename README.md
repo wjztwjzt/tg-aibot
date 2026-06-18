@@ -503,6 +503,32 @@ docker compose logs -f
 | `sticker_chance` | AI 想发贴纸时，实际发送贴纸的概率，范围 0-1 |
 
 ```text
+/persona
+```
+
+管理员查看当前群额外人设规则。
+
+```text
+/persona_add 说话更毒舌一点，但不要骂人
+/persona_add 偶尔用一点广东话
+/persona_add 不要每次都回复太热情，要像真实群友
+```
+
+管理员逐条追加当前群的人设规则。也可以回复一条文字消息发送 `/persona_add`，机器人会把被回复那条消息作为人设规则添加。
+
+```text
+/persona_del 2
+```
+
+删除第 2 条人设规则。
+
+```text
+/persona_clear
+```
+
+清空当前群额外人设规则。这些规则保存在 Docker 数据卷里，重启不丢。
+
+```text
 /ai_test
 ```
 
@@ -751,41 +777,78 @@ docker ps
 
 ## 十二、修改机器人说话人设
 
+机器人有两层人设：
+
+1. `.env` 里的 `PERSONA_PROMPT`：全局基础人设，适合一开始设置大方向。
+2. 群内 `/persona_add`：当前群的额外人设规则，适合后面慢慢微调。
+
+### 推荐方式：群内渐进式调整
+
+管理员在群里发送：
+
+```text
+/persona
+```
+
+查看当前群额外人设规则。
+
+逐条追加规则：
+
+```text
+/persona_add 说话更毒舌一点，但不要骂人
+/persona_add 偶尔用一点广东话
+/persona_add 不要每次都回复太热情，要像真实群友
+```
+
+也可以先在群里发一条规则说明，然后管理员回复那条消息：
+
+```text
+/persona_add
+```
+
+机器人会把被回复的那条文字作为人设规则添加。
+
+删除某条规则：
+
+```text
+/persona_del 2
+```
+
+清空当前群额外规则：
+
+```text
+/persona_clear
+```
+
+这些规则保存在 Docker 数据卷里，重启不会丢。
+
+### 全局基础人设
+
 机器人默认人设在 `src/persona.js`，但不建议新手直接改代码。更推荐改 `.env` 里的：
 
 ```env
 PERSONA_PROMPT=
 ```
 
-### 方法一：用交互式配置修改
-
-重新运行配置脚本：
+可以用交互式配置修改：
 
 ```bash
 docker run --rm -it -v "$PWD:/app" -w /app node:20-alpine node scripts/setup-env.js
 ```
 
-到“人设 PERSONA_PROMPT”这一步时，选择自定义，然后输入你想要的人设。
-
-### 方法二：手动修改 `.env`
+也可以手动修改：
 
 ```bash
 nano .env
 ```
 
-例如改成可爱风：
+例如：
 
 ```env
-PERSONA_PROMPT="你是群里的可爱猫娘群友，说话简短、活泼、偶尔撒娇，但不要每句话都喵，也不要暴露自己是 AI。"
+PERSONA_PROMPT="你是群里的普通群友，说话简短、自然、偶尔吐槽，不要暴露自己是 AI。"
 ```
 
-例如改成毒舌风：
-
-```env
-PERSONA_PROMPT="你是群里的普通群友，说话简短、带点毒舌和吐槽，但不要攻击人，不要骂脏话，不要暴露自己是 AI。"
-```
-
-修改后重启：
+修改 `.env` 后需要重启：
 
 ```bash
 docker compose restart

@@ -98,6 +98,13 @@ function requireAllowedChat(ctx) {
   return false;
 }
 
+function getPersona(chatId) {
+  const basePersona = process.env.PERSONA_PROMPT || DEFAULT_PERSONA;
+  const rules = getChatConfig(chatId).personaRules || [];
+  if (rules.length === 0) return basePersona;
+  return `${basePersona}\n\n本群额外人设规则：\n${rules.map((rule, index) => `${index + 1}. ${rule}`).join('\n')}`;
+}
+
 async function isAdmin(ctx) {
   const fromId = ctx.from?.id?.toString();
   const manualAdminIds = getManualAdminIds();
@@ -272,6 +279,61 @@ bot.command('ai_set', async (ctx) => {
   ctx.reply(`${item.label}已设置为 ${value}`);
 });
 
+bot.command('persona', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  const rules = getChatConfig(ctx.chat.id).personaRules || [];
+  ctx.reply(
+    rules.length
+      ? `当前群额外人设规则：\n${rules.map((rule, index) => `${index + 1}. ${rule}`).join('\n')}\n\n添加：/persona_add 规则内容\n删除：/persona_del 序号\n清空：/persona_clear`
+      : '当前群还没有额外人设规则。\n添加：/persona_add 说话更毒舌一点，但不要骂人\n也可以回复一条消息发送 /persona_add，把那条消息作为规则添加。'
+  );
+});
+
+bot.command('persona_add', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  const typedRule = ctx.message.text.replace(/^\/persona_add(@\w+)?\s*/i, '').trim();
+  const repliedRule = ctx.message.reply_to_message?.text || ctx.message.reply_to_message?.caption || '';
+  const rule = (typedRule || repliedRule).trim();
+
+  if (!rule) {
+    return ctx.reply('用法：/persona_add 规则内容\n或者回复一条文字消息发送 /persona_add，把那条消息作为人设规则添加。');
+  }
+
+  const config = getChatConfig(ctx.chat.id);
+  const rules = [...(config.personaRules || []), rule].slice(0, 30);
+  setChatConfig(ctx.chat.id, { personaRules: rules });
+  ctx.reply(`已添加人设规则 ${rules.length}：\n${rule}`);
+});
+
+bot.command('persona_del', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  const index = parseInt(ctx.message.text.split(/\s+/)[1], 10) - 1;
+  const config = getChatConfig(ctx.chat.id);
+  const rules = [...(config.personaRules || [])];
+
+  if (!Number.isInteger(index) || index < 0 || index >= rules.length) {
+    return ctx.reply('用法：/persona_del 序号\n先用 /persona 查看序号。');
+  }
+
+  const [removed] = rules.splice(index, 1);
+  setChatConfig(ctx.chat.id, { personaRules: rules });
+  ctx.reply(`已删除人设规则：\n${removed}`);
+});
+
+bot.command('persona_clear', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  setChatConfig(ctx.chat.id, { personaRules: [] });
+  ctx.reply('已清空当前群额外人设规则。');
+});
+
 bot.command('ai_test', async (ctx) => {
   if (!requireAllowedChat(ctx)) return;
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
@@ -279,7 +341,7 @@ bot.command('ai_test', async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
     const result = await decideAndReply({
-      persona: process.env.PERSONA_PROMPT || DEFAULT_PERSONA,
+      persona: getPersona(ctx.chat.id),
       stickerTags: getStickerTags(ctx.chat.id),
       messages: [
         {
@@ -326,7 +388,7 @@ bot.on('message', async (ctx) => {
     const state = getChat(chatId);
 
     const { shouldReply, reply, sticker, stickerTag } = await decideAndReply({
-      persona: process.env.PERSONA_PROMPT || DEFAULT_PERSONA,
+      persona: getPersona(ctx.chat.id),
       messages: state.messages,
       mode: trigger,
       stickerTags: getStickerTags(chatId),
@@ -373,7 +435,7 @@ setInterval(async () => {
     if (idleFor > idleThresholdMs && sinceLastIdlePrompt > idleCooldownMs) {
       try {
         const { shouldReply, reply, sticker, stickerTag } = await decideAndReply({
-          persona: process.env.PERSONA_PROMPT || DEFAULT_PERSONA,
+          persona: getPersona(chatId),
           messages: state.messages,
           mode: 'idle',
           stickerTags: getStickerTags(chatId),

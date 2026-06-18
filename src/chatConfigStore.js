@@ -35,6 +35,7 @@ function getDefaultConfig() {
     idleThresholdMinutes: numEnv('IDLE_THRESHOLD_MINUTES', 20),
     idleCooldownMinutes: numEnv('IDLE_COOLDOWN_MINUTES', 60),
     stickerReplyChance: numEnv('STICKER_REPLY_CHANCE', 0.15),
+    personaRules: [],
   };
 }
 

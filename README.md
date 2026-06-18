@@ -1,75 +1,431 @@
 # Telegram 群组 AI 气氛活跃机器人
 
-基于 Telegraf + OpenAI 兼容格式的 AI 接口。长轮询模式，不需要域名、不需要 SSL、不需要对外开放任何端口。
+一个可以放进 Telegram 群里的 AI 气氛机器人。它会根据群聊上下文偶尔接话、被 @ 时回复、冷场时主动抛话题。
 
-## 1. 创建机器人
+项目基于 Telegraf + OpenAI 兼容格式的 AI 接口，支持 Groq、OpenAI、各种中转站。默认使用长轮询模式，不需要域名、不需要 SSL、不需要开放任何端口。
 
-1. Telegram 搜索 `@BotFather`，发送 `/newbot`，按提示设置名称，拿到 `BOT_TOKEN`。
-2. **关键一步**：发送 `/setprivacy`，选择你的机器人，选择 `Disable`。
-   - 这一步决定机器人能不能看到群里的所有消息，而不是只能看到 `/command` 和 @它的消息。
-   - **如果机器人已经在某个群里了，必须先把它踢出群，再重新拉回去**，privacy 设置才会对这个群生效，这是 Telegram 的已知行为，不是 bug。
-3. 把机器人拉进目标群，不需要给管理员权限（除非你想用它做其他管理功能）。
+---
 
-## 2. 配置 AI 接口
+## 服务器配置要求
 
-项目支持 OpenAI 兼容格式的接口，可以使用 Groq、OpenAI，或者你自己的中转站。
+这个项目不在服务器本地跑大模型，只是接收 Telegram 消息，然后请求 AI 接口，所以配置要求很低。
 
-如果使用中转站，通常需要从中转站后台拿到三项信息：
+### 最低配置
 
-- `AI_BASE_URL`：接口基础地址，例如 `https://example.com/v1`
-- `AI_API_KEY`：中转站 API Key
-- `AI_MODEL`：中转站支持的模型名
+| 项目 | 最低要求 |
+| --- | --- |
+| CPU | 1 核 |
+| 内存 | 512MB |
+| 硬盘 | 5GB |
+| 系统 | Ubuntu / Debian |
+| 网络 | 能访问 Telegram 和你的 AI 中转站 |
 
-如果中转站给的是完整接口地址，也可以直接配置 `AI_API_URL`，例如 `https://example.com/v1/chat/completions`。
+### 推荐配置
 
-## 3. 配置环境变量
+| 项目 | 推荐 |
+| --- | --- |
+| CPU | 1 核 |
+| 内存 | 1GB |
+| 硬盘 | 10GB |
+| 系统 | Ubuntu 22.04 / Debian 12 |
+
+**1C1G + 10G 硬盘完全够用。**
+
+如果你的服务器还要同时跑宝塔、Nginx、数据库、其他机器人，建议用 2G 内存会更稳。
+
+---
+
+## 一、创建 Telegram 机器人
+
+1. 打开 Telegram，搜索 `@BotFather`。
+2. 给 `@BotFather` 发送：
+
+   ```text
+   /newbot
+   ```
+
+3. 按提示设置机器人名称和用户名。
+4. 创建完成后，BotFather 会给你一个 `BOT_TOKEN`，格式大概像这样：
+
+   ```text
+   123456789:AAxxxxxx_xxxxxxxxxxxxxxxxx
+   ```
+
+   这个后面要填进 `.env` 文件。
+
+5. 继续给 `@BotFather` 发送：
+
+   ```text
+   /setprivacy
+   ```
+
+6. 选择你的机器人，然后选择：
+
+   ```text
+   Disable
+   ```
+
+这一步非常重要。只有关闭 privacy mode，机器人才能看到群里的普通消息。
+
+如果机器人已经在群里了，改完 privacy 后，建议把机器人从群里踢出，再重新拉进群，否则可能不生效。
+
+---
+
+## 二、准备 AI 接口
+
+本项目支持 OpenAI 兼容格式接口。一般中转站都会提供这三项：
+
+| 配置项 | 说明 | 示例 |
+| --- | --- | --- |
+| `AI_BASE_URL` | 接口基础地址 | `https://api.example.com/v1` |
+| `AI_API_KEY` | API Key | `sk-xxxxxx` |
+| `AI_MODEL` | 模型名 | `gpt-4o-mini` |
+
+如果你的中转站给的是完整接口地址，例如：
+
+```text
+https://api.example.com/v1/chat/completions
+```
+
+也可以直接填 `AI_API_URL`。
+
+通常情况下，只需要填 `AI_BASE_URL`，不用填 `AI_API_URL`。
+
+---
+
+## 三、服务器安装 Docker
+
+下面以 Ubuntu / Debian 为例。
+
+先登录你的服务器，然后执行：
+
+```bash
+apt update
+apt install -y git docker.io docker-compose-plugin
+systemctl enable --now docker
+```
+
+检查 Docker 是否安装成功：
+
+```bash
+docker --version
+docker compose version
+```
+
+能看到版本号就说明成功。
+
+---
+
+## 四、下载项目
+
+在服务器执行：
+
+```bash
+git clone https://github.com/sanrokamlan-prog/tg-aibot.git
+cd tg-aibot
+```
+
+---
+
+## 五、配置环境变量
+
+复制配置文件：
 
 ```bash
 cp .env.example .env
-vim .env
 ```
 
-至少要填 `BOT_TOKEN`、`AI_API_KEY` 和 `AI_MODEL`。如果你用的是中转站，还要把 `AI_BASE_URL` 改成中转站提供的接口基础地址。其余参数说明见 `.env.example` 注释，建议先用默认值跑一段时间，观察群里反馈再调。
+编辑配置：
 
-`PERSONA_PROMPT` 留空就用 `src/persona.js` 里的默认人设；如果想换风格（比如换成毒舌、换成话题型、换成某个地区方言风），直接把整段人设写进这个变量即可，不用改代码。
+```bash
+nano .env
+```
 
-## 4. 部署
+至少需要填写下面几项：
+
+```env
+BOT_TOKEN=你的Telegram机器人Token
+
+AI_BASE_URL=https://你的中转站地址/v1
+AI_API_KEY=你的中转站APIKey
+AI_MODEL=你的模型名
+```
+
+例如：
+
+```env
+BOT_TOKEN=123456789:AAxxxxxx_xxxxxxxxxxxxxxxxx
+
+AI_BASE_URL=https://api.example.com/v1
+AI_API_KEY=sk-xxxxxxxxxxxxxxxx
+AI_MODEL=gpt-4o-mini
+```
+
+如果你的中转站给的是完整接口地址，可以这样写：
+
+```env
+BOT_TOKEN=123456789:AAxxxxxx_xxxxxxxxxxxxxxxxx
+
+AI_API_URL=https://api.example.com/v1/chat/completions
+AI_API_KEY=sk-xxxxxxxxxxxxxxxx
+AI_MODEL=gpt-4o-mini
+```
+
+编辑完成后：
+
+- `nano` 保存：按 `Ctrl + O`，回车
+- 退出：按 `Ctrl + X`
+
+---
+
+## 六、推荐新手先用的参数
+
+为了避免机器人太吵，也为了省中转站额度，建议一开始这样配置：
+
+```env
+RANDOM_REPLY_CHANCE=0.02
+MIN_REPLY_INTERVAL_SECONDS=180
+MIN_MSGS_BETWEEN_REPLIES=5
+IDLE_THRESHOLD_MINUTES=30
+IDLE_COOLDOWN_MINUTES=120
+MAX_HISTORY=25
+```
+
+含义简单解释：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `RANDOM_REPLY_CHANCE` | 普通聊天时随机插话概率，越大越活跃 |
+| `MIN_REPLY_INTERVAL_SECONDS` | 两次主动发言最少间隔多少秒 |
+| `MIN_MSGS_BETWEEN_REPLIES` | 距离上次发言至少过多少条群消息才会再次插话 |
+| `IDLE_THRESHOLD_MINUTES` | 群里安静多久后尝试主动抛话题 |
+| `IDLE_COOLDOWN_MINUTES` | 两次冷场发言之间的最少间隔 |
+| `MAX_HISTORY` | 每个群最多保留多少条历史消息作为上下文 |
+
+如果觉得机器人太安静，可以慢慢把 `RANDOM_REPLY_CHANCE` 调高，比如：
+
+```env
+RANDOM_REPLY_CHANCE=0.05
+```
+
+不建议一开始设置太高，比如 `0.2`、`0.5`，容易刷屏，也更费额度。
+
+---
+
+## 七、启动机器人
+
+在项目目录里执行：
 
 ```bash
 docker compose up -d --build
+```
+
+查看日志：
+
+```bash
 docker compose logs -f
 ```
 
-看到日志输出 `机器人已启动: @xxx` 就说明跑起来了。
+如果看到类似下面的内容，说明启动成功：
 
-## 5. 群内管理指令（仅群管理员可用）
+```text
+机器人已启动: @你的机器人用户名
+```
 
-- `/ai_on` 开启这个群的 AI 互动
-- `/ai_off` 关闭这个群的 AI 互动（机器人还在群里，但不会主动说话）
-- `/ai_chance 0.05` 调整随机插话概率，范围 0-1，数字越大插话越频繁
-- `/ai_status` 查看当前群的状态
+然后把机器人拉进 Telegram 群，就可以使用了。
 
-## 6. 工作原理简述
+---
 
-- 机器人把每个群最近的 N 条消息缓存在内存里（默认 40 条），作为上下文喂给模型，不落盘、不持久化，重启会清空，几分钟内自然重新积累。
-- 三种发言时机：
-  1. **被 @ 或被回复** → 必定调用模型生成回复
-  2. **日常闲聊** → 满足"冷却时间已过"且"距上次发言已隔够多条消息"的前提下，按概率随机触发
-  3. **冷场复活** → 群里安静超过设定阈值，主动抛话题
-- 即使统计上触发了，最终是否真的发言，仍由模型自己根据上下文判断（返回的 JSON 里有 `should_reply` 字段），所以不会出现"为了凑数硬接话"的尴尬场面。
-- 发送前会有 1-3 秒的随机延迟模拟打字，避免机器人一秒回复显得太假。
+## 八、常用管理命令
 
-## 7. 安全与运维注意
+这些命令在群里发送，只有群管理员可以操作：
 
-- `.env` 不要提交进 git，不要出现在任何公开仓库里。
-- 该容器不监听任何端口（长轮询），不需要在防火墙/Nginx 上为它单独开规则。
-- 如果怀疑 `BOT_TOKEN` 泄露，去 `@BotFather` 用 `/revoke` 直接吊销重发，比改密码快。
-- 容器内进程以非 root 用户运行（见 Dockerfile）。
-- 群成员可能会反感"被机器人监听全部聊天记录"，建议在群公告里说明一下有 AI 机器人在场，避免后续纠纷。
+```text
+/ai_on
+```
 
-## 8. 后续可以加的功能（按需）
+开启当前群的 AI 互动。
 
-- 按群配置不同人设（现在是全局一个 `PERSONA_PROMPT`，可以扩展成按 chatId 存不同人设）
-- 关键词触发（比如有人发某个词就触发固定梗回复）
-- 把内存上下文换成 SQLite，重启不丢历史（目前为了部署简单没加这层）
-- 切换成 webhook 模式接到你现有的 Nginx + Cloudflare + Let's Encrypt 链路上，省掉长轮询的网络开销
+```text
+/ai_off
+```
+
+关闭当前群的 AI 互动。机器人还在群里，但不会主动说话。
+
+```text
+/ai_chance 0.05
+```
+
+调整随机插话概率。数字范围是 `0` 到 `1`。
+
+例如：
+
+- `0.01`：很少说话
+- `0.05`：适中
+- `0.1`：比较活跃
+- `0.3`：很吵，不建议
+
+```text
+/ai_status
+```
+
+查看当前群的 AI 状态。
+
+---
+
+## 九、更新项目
+
+如果后面仓库有更新，在服务器项目目录执行：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+---
+
+## 十、停止和重启
+
+停止机器人：
+
+```bash
+docker compose down
+```
+
+重启机器人：
+
+```bash
+docker compose restart
+```
+
+查看日志：
+
+```bash
+docker compose logs -f
+```
+
+---
+
+## 十一、常见问题
+
+### 1. 日志显示机器人启动失败
+
+先检查 `.env` 里的 `BOT_TOKEN` 是否正确。
+
+```bash
+nano .env
+```
+
+常见错误：
+
+- Token 前后多了空格
+- Token 复制不完整
+- 填成了 BotFather 里的机器人用户名，而不是 token
+
+### 2. 机器人进群后不看普通消息
+
+检查 BotFather 的 privacy mode 是否关闭：
+
+```text
+/setprivacy
+```
+
+选择机器人后设置为：
+
+```text
+Disable
+```
+
+如果之前已经把机器人拉进群，关闭 privacy 后需要把机器人踢出群，再重新拉进群。
+
+### 3. 被 @ 也不回复
+
+查看日志：
+
+```bash
+docker compose logs -f
+```
+
+如果日志里出现 AI API 报错，通常是这些原因：
+
+- `AI_BASE_URL` 写错
+- `AI_API_KEY` 写错
+- `AI_MODEL` 模型名不对
+- 中转站余额不足
+- 中转站接口暂时不可用
+
+### 4. 日志里出现 401 / 403
+
+一般是 API Key 错误，或者中转站没有权限使用这个模型。
+
+检查：
+
+```env
+AI_API_KEY=
+AI_MODEL=
+```
+
+### 5. 日志里出现 429
+
+一般是请求太频繁或额度不够。
+
+可以把参数调低：
+
+```env
+RANDOM_REPLY_CHANCE=0.01
+MIN_REPLY_INTERVAL_SECONDS=300
+MIN_MSGS_BETWEEN_REPLIES=8
+MAX_HISTORY=20
+```
+
+然后重启：
+
+```bash
+docker compose restart
+```
+
+### 6. 怎么确认容器还在运行
+
+```bash
+docker ps
+```
+
+能看到 `tg-ai-bot` 就说明容器还在。
+
+---
+
+## 十二、安全注意事项
+
+- 不要把 `.env` 发给别人。
+- 不要把 `.env` 上传到 GitHub。
+- 如果 `BOT_TOKEN` 泄露，去 `@BotFather` 使用 `/revoke` 重新生成。
+- 如果 `AI_API_KEY` 泄露，去中转站后台删除旧 key，重新创建。
+- 群聊天内容会发送给你的 AI 接口或中转站，建议在群公告里说明有 AI 机器人在场。
+
+---
+
+## 十三、工作原理简述
+
+机器人会把每个群最近的若干条文字消息缓存在内存里，作为上下文发给模型。
+
+触发方式有三种：
+
+1. 群友 @ 机器人，或回复机器人的消息：一定尝试回复。
+2. 普通聊天：满足冷却时间、消息间隔和概率条件后，随机插话。
+3. 群里冷场：安静一段时间后，主动抛一个话题。
+
+注意：
+
+- 聊天上下文只存在内存里，重启会清空。
+- 目前只处理文字消息，不处理图片、贴纸、语音。
+- `/ai_off`、`/ai_chance` 这些群配置目前也只存在内存里，重启后会恢复 `.env` 默认值。
+
+---
+
+## 后续可以加的功能
+
+- 按不同群设置不同人设
+- 关键词触发固定回复
+- 使用 SQLite 持久化群配置和上下文
+- 支持图片、贴纸、语音消息
+- 增加限流退避，遇到 429 自动降低发言频率

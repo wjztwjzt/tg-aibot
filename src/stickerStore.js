@@ -22,16 +22,36 @@ function save() {
   fs.writeFileSync(STORE_PATH, JSON.stringify(cache, null, 2));
 }
 
-function getChatStickerIds(chatId) {
-  ensureLoaded();
-  return cache.chats[String(chatId)] || [];
+function normalizeSticker(item) {
+  if (typeof item === 'string') return { fileId: item, tags: [] };
+  return {
+    fileId: item.fileId || item.file_id || item.id,
+    tags: Array.isArray(item.tags) ? item.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+  };
 }
 
-function addChatSticker(chatId, stickerId) {
+function getChatStickers(chatId) {
+  ensureLoaded();
+  return (cache.chats[String(chatId)] || []).map(normalizeSticker).filter((item) => item.fileId);
+}
+
+function getChatStickerIds(chatId) {
+  return getChatStickers(chatId).map((item) => item.fileId);
+}
+
+function addChatSticker(chatId, stickerId, tags = []) {
   ensureLoaded();
   const key = String(chatId);
-  const stickers = cache.chats[key] || [];
-  if (!stickers.includes(stickerId)) stickers.push(stickerId);
+  const stickers = getChatStickers(chatId);
+  const cleanTags = tags.map((tag) => String(tag).trim()).filter(Boolean);
+  const existing = stickers.find((item) => item.fileId === stickerId);
+
+  if (existing) {
+    existing.tags = Array.from(new Set([...existing.tags, ...cleanTags]));
+  } else {
+    stickers.push({ fileId: stickerId, tags: cleanTags });
+  }
+
   cache.chats[key] = stickers;
   save();
   return stickers;
@@ -44,6 +64,7 @@ function clearChatStickers(chatId) {
 }
 
 module.exports = {
+  getChatStickers,
   getChatStickerIds,
   addChatSticker,
   clearChatStickers,

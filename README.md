@@ -379,11 +379,13 @@ docker compose restart
 不用去服务器改配置，直接在群里操作：
 
 1. 在群里发一个你想让机器人使用的贴纸。
-2. 管理员回复这条贴纸，发送：
+2. 管理员回复这条贴纸，发送，并在后面写标签：
 
    ```text
-   /sticker_add
+   /sticker_add 开心 可爱
    ```
+
+   标签建议写情绪或用途，比如：`开心`、`无语`、`吐槽`、`哭哭`、`赞同`、`震惊`。
 
 3. 查看当前群贴纸池：
 
@@ -473,6 +475,34 @@ docker compose logs -f
 查看当前群的 AI 状态、机器人用户名和机器人 ID。@ 机器人时要 @ 这里显示的用户名。
 
 ```text
+/ai_config
+```
+
+管理员查看当前群的详细配置，包括随机插话概率、冷却时间、贴纸概率等。
+
+```text
+/ai_set random_chance 0.02
+/ai_set min_interval 180
+/ai_set min_msgs 5
+/ai_set idle_threshold 30
+/ai_set idle_cooldown 120
+/ai_set sticker_chance 0.15
+```
+
+管理员在群里直接修改配置，不用上服务器。配置会保存到 Docker 数据卷里，重启不丢。
+
+可改参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `random_chance` | 随机插话概率，范围 0-1 |
+| `min_interval` | 两次主动发言最少间隔秒数 |
+| `min_msgs` | 距离上次发言至少间隔多少条群消息 |
+| `idle_threshold` | 群里安静多少分钟后尝试冷场复活 |
+| `idle_cooldown` | 两次冷场复活之间最少间隔分钟数 |
+| `sticker_chance` | AI 想发贴纸时，实际发送贴纸的概率，范围 0-1 |
+
+```text
 /ai_test
 ```
 
@@ -485,10 +515,18 @@ docker compose logs -f
 回复一条贴纸发送这个命令，查看贴纸的 `file_id`。
 
 ```text
-/sticker_add
+/sticker_add 开心 可爱
 ```
 
-管理员回复一条贴纸发送这个命令，把贴纸加入当前群的贴纸池。以后 AI 判断适合发贴纸时，会从贴纸池随机挑一个发送。
+管理员回复一条贴纸发送这个命令，把贴纸加入当前群的贴纸池，并给它打标签。以后 AI 会根据语境优先选择匹配标签的贴纸。
+
+例子：
+
+```text
+/sticker_add 开心 赞同
+/sticker_add 无语 吐槽
+/sticker_add 哭哭 委屈
+```
 
 ```text
 /sticker_list

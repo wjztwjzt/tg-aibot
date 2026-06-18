@@ -80,10 +80,11 @@ function parseDecision(raw) {
       shouldReply: Boolean(parsed.should_reply),
       reply: truncateText(parsed.reply || '', 300),
       sticker: Boolean(parsed.sticker),
+      stickerTag: truncateText(parsed.sticker_tag || '', 40),
     };
   } catch (e) {
     const fallback = truncateText(raw.trim(), 300);
-    return { shouldReply: fallback.length > 0, reply: fallback, sticker: false };
+    return { shouldReply: fallback.length > 0, reply: fallback, sticker: false, stickerTag: '' };
   }
 }
 
@@ -130,14 +131,15 @@ function buildRequestBody({ sys, userContent, mode }) {
   };
 }
 
-async function decideAndReply({ persona, messages, mode }) {
+async function decideAndReply({ persona, messages, mode, stickerTags = [] }) {
   const transcript = buildTranscript(messages);
+  const stickerTagText = stickerTags.length ? `\n当前可用贴纸标签：${stickerTags.join('、')}` : '';
   const sys = `${persona || DEFAULT_PERSONA}
 
 你会看到最近的群聊记录。${buildInstruction(mode)}
 请只输出一个 JSON 对象，不要包含任何其他文字、不要用 markdown 代码块包裹，格式必须是：
-{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串", "sticker": true 或 false}
-回复必须短，通常不要超过 40 个中文字。只有在语气适合用贴纸时，才把 sticker 设为 true。`;
+{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串", "sticker": true 或 false, "sticker_tag": "想使用的贴纸标签，没有则留空"}
+回复必须短，通常不要超过 40 个中文字。只有在语气适合用贴纸时，才把 sticker 设为 true。如果设置 sticker 为 true，请优先从可用贴纸标签里选择一个最匹配的 sticker_tag。${stickerTagText}`;
 
   const userContent = `最近聊天记录：\n${transcript || '(暂无记录)'}\n\n请给出 JSON。`;
   const body = buildRequestBody({ sys, userContent, mode });

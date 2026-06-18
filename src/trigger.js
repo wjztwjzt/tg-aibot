@@ -1,7 +1,5 @@
 const { getChat } = require('./contextStore');
-
-const MIN_INTERVAL_MS = parseInt(process.env.MIN_REPLY_INTERVAL_SECONDS || '60', 10) * 1000;
-const MIN_MSGS_BETWEEN = parseInt(process.env.MIN_MSGS_BETWEEN_REPLIES || '3', 10);
+const { getChatConfig } = require('./chatConfigStore');
 
 function normalizeUsername(username) {
   return (username || '').replace(/^@/, '').toLowerCase();
@@ -41,15 +39,16 @@ function isMention(ctx, botInfo) {
 function decideTrigger(ctx, botInfo) {
   const chatId = ctx.chat.id;
   const state = getChat(chatId);
-  if (!state.aiEnabled) return null;
+  const config = getChatConfig(chatId);
+  if (!state.aiEnabled || !config.aiEnabled) return null;
 
   if (isMention(ctx, botInfo)) return 'mention';
 
   const now = Date.now();
-  const cooledDown = now - state.lastBotReplyAt > MIN_INTERVAL_MS;
-  const enoughGap = state.msgSinceBotReply >= MIN_MSGS_BETWEEN;
+  const cooledDown = now - state.lastBotReplyAt > config.minReplyIntervalSeconds * 1000;
+  const enoughGap = state.msgSinceBotReply >= config.minMsgsBetweenReplies;
 
-  if (cooledDown && enoughGap && Math.random() < state.randomChance) {
+  if (cooledDown && enoughGap && Math.random() < config.randomChance) {
     return 'random';
   }
 

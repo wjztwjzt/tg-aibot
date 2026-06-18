@@ -206,16 +206,18 @@ setInterval(async () => {
 
 // ---- 启动 ----
 
-bot
-  .launch()
-  .then(async () => {
-    botInfo = await bot.telegram.getMe();
-    console.log(`机器人已启动: @${botInfo.username} (${botInfo.id})`);
-  })
-  .catch((e) => {
-    console.error('启动失败:', e.message);
-    process.exit(1);
-  });
+async function main() {
+  botInfo = await bot.telegram.getMe();
+  console.log(`机器人信息: @${botInfo.username} (${botInfo.id})`);
+
+  await bot.launch();
+  console.log(`机器人已启动: @${botInfo.username} (${botInfo.id})`);
+}
+
+main().catch((e) => {
+  console.error('启动失败:', e.message);
+  process.exit(1);
+});
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

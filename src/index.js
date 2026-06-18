@@ -10,6 +10,11 @@ const {
 const { decideTrigger } = require('./trigger');
 const { decideAndReply } = require('./ai');
 const { DEFAULT_PERSONA } = require('./persona');
+const {
+  getChatStickerIds,
+  addChatSticker,
+  clearChatStickers,
+} = require('./stickerStore');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 let botInfo = null;
@@ -17,12 +22,67 @@ let botInfo = null;
 const IDLE_THRESHOLD_MS = parseInt(process.env.IDLE_THRESHOLD_MINUTES || '20', 10) * 60 * 1000;
 const IDLE_COOLDOWN_MS = parseInt(process.env.IDLE_COOLDOWN_MINUTES || '60', 10) * 60 * 1000;
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+const STICKER_REPLY_CHANCE = parseFloat(process.env.STICKER_REPLY_CHANCE || '0.15');
 
 function getManualAdminIds() {
   return (process.env.ADMIN_USER_IDS || '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+function getEnvStickerIds() {
+  return (process.env.STICKER_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function getAllowedChatIds() {
+  return (process.env.ALLOWED_CHAT_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function isAllowedChat(ctx) {
+  const allowedChatIds = getAllowedChatIds();
+  if (allowedChatIds.length === 0) return true;
+  return allowedChatIds.includes(String(ctx.chat?.id));
+}
+
+function pickRandomStickerId(chatId) {
+  const stickerIds = [...getChatStickerIds(chatId), ...getEnvStickerIds()];
+  if (stickerIds.length === 0) return null;
+  return stickerIds[Math.floor(Math.random() * stickerIds.length)];
+}
+
+async function maybeSendSticker(ctx, wantsSticker) {
+  if (!wantsSticker) return false;
+  if (Math.random() > STICKER_REPLY_CHANCE) return false;
+
+  const stickerId = pickRandomStickerId(ctx.chat.id);
+  if (!stickerId) return false;
+
+  await ctx.replyWithSticker(stickerId);
+  return true;
+}
+
+async function maybeSendStickerToChat(chatId, wantsSticker) {
+  if (!wantsSticker) return false;
+  if (Math.random() > STICKER_REPLY_CHANCE) return false;
+
+  const stickerId = pickRandomStickerId(chatId);
+  if (!stickerId) return false;
+
+  await bot.telegram.sendSticker(chatId, stickerId);
+  return true;
+}
+
+function requireAllowedChat(ctx) {
+  if (isAllowedChat(ctx)) return true;
+  console.log(`拒绝未授权群组: chat=${ctx.chat?.id}, title=${ctx.chat?.title || ''}`);
+  return false;
 }
 
 async function isAdmin(ctx) {
@@ -63,19 +123,70 @@ bot.command('my_id', async (ctx) => {
   ctx.reply(`你的 Telegram 用户 ID 是：${userId}\n如果管理员判断失效，可以把它填进 .env 的 ADMIN_USER_IDS`);
 });
 
+bot.command('chat_id', async (ctx) => {
+  ctx.reply(`当前聊天 ID 是：${ctx.chat.id}\n如果要限制机器人只在这个群可用，把它填进 .env 的 ALLOWED_CHAT_IDS`);
+});
+
+bot.command('sticker_id', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+
+  const sticker = ctx.message?.reply_to_message?.sticker || ctx.message?.sticker;
+  if (!sticker) {
+    return ctx.reply('请回复一条贴纸消息发送 /sticker_id，我会告诉你这个贴纸的 file_id。');
+  }
+
+  ctx.reply(`贴纸 file_id：\n${sticker.file_id}\n\n如果想直接加入当前群贴纸池，请回复贴纸发送 /sticker_add。`);
+});
+
+bot.command('sticker_add', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  const sticker = ctx.message?.reply_to_message?.sticker || ctx.message?.sticker;
+  if (!sticker) {
+    return ctx.reply('请回复一条贴纸消息发送 /sticker_add，我会把它加入当前群贴纸池。');
+  }
+
+  const stickers = addChatSticker(ctx.chat.id, sticker.file_id);
+  ctx.reply(`已加入当前群贴纸池。当前贴纸数量：${stickers.length}`);
+});
+
+bot.command('sticker_list', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  const stickers = getChatStickerIds(ctx.chat.id);
+  const envStickers = getEnvStickerIds();
+  ctx.reply(
+    `当前群贴纸数量：${stickers.length}\n全局 .env 贴纸数量：${envStickers.length}\n` +
+      (stickers.length ? stickers.map((id, index) => `${index + 1}. ${id}`).join('\n') : '当前群还没有添加贴纸')
+  );
+});
+
+bot.command('sticker_clear', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
+  if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
+
+  clearChatStickers(ctx.chat.id);
+  ctx.reply('已清空当前群贴纸池。');
+});
+
 bot.command('ai_on', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
   getChat(ctx.chat.id).aiEnabled = true;
   ctx.reply('已开启 AI 互动');
 });
 
 bot.command('ai_off', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
   getChat(ctx.chat.id).aiEnabled = false;
   ctx.reply('已关闭 AI 互动');
 });
 
 bot.command('ai_chance', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
   const arg = ctx.message.text.split(' ')[1];
   const val = parseFloat(arg);
@@ -87,6 +198,7 @@ bot.command('ai_chance', async (ctx) => {
 });
 
 bot.command('ai_status', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
   const s = getChat(ctx.chat.id);
   const username = botInfo?.username ? `@${botInfo.username}` : '启动中';
   const id = botInfo?.id || '启动中';
@@ -96,6 +208,7 @@ bot.command('ai_status', async (ctx) => {
 });
 
 bot.command('ai_test', async (ctx) => {
+  if (!requireAllowedChat(ctx)) return;
   if (!(await isAdmin(ctx))) return ctx.reply('只有管理员可以操作');
 
   try {
@@ -113,7 +226,7 @@ bot.command('ai_test', async (ctx) => {
       mode: 'mention',
     });
 
-    ctx.reply(`AI接口测试成功\nshouldReply: ${result.shouldReply}\nreply: ${result.reply || '(空)'}`);
+    ctx.reply(`AI接口测试成功\nshouldReply: ${result.shouldReply}\nreply: ${result.reply || '(空)'}\nsticker: ${result.sticker}`);
   } catch (e) {
     console.error('AI 接口测试失败:', e.message);
     ctx.reply(`AI接口测试失败：${e.message.slice(0, 3500)}`);
@@ -123,14 +236,16 @@ bot.command('ai_test', async (ctx) => {
 // ---- 普通消息处理 ----
 
 bot.on('message', async (ctx) => {
-  if (!ctx.message.text) return; // 暂不处理图片/贴纸等
-  if (ctx.message.text.startsWith('/')) return;
+  if (!requireAllowedChat(ctx)) return;
+  if (!ctx.message.text && !ctx.message.sticker) return;
+  if (ctx.message.text?.startsWith('/')) return;
 
   const chatId = ctx.chat.id;
+  const messageText = ctx.message.text || '[贴纸]';
 
   pushMessage(chatId, {
     user: ctx.from.username || ctx.from.first_name || '某人',
-    text: ctx.message.text,
+    text: messageText,
     ts: Date.now(),
     fromBot: false,
   });
@@ -138,13 +253,13 @@ bot.on('message', async (ctx) => {
   const trigger = decideTrigger(ctx, botInfo);
   if (!trigger) return;
 
-  console.log(`触发AI回复: chat=${chatId}, mode=${trigger}, text=${ctx.message.text.slice(0, 80)}`);
+  console.log(`触发AI回复: chat=${chatId}, mode=${trigger}, text=${messageText.slice(0, 80)}`);
 
   try {
     await ctx.sendChatAction('typing');
     const state = getChat(chatId);
 
-    const { shouldReply, reply } = await decideAndReply({
+    const { shouldReply, reply, sticker } = await decideAndReply({
       persona: process.env.PERSONA_PROMPT || DEFAULT_PERSONA,
       messages: state.messages,
       mode: trigger,
@@ -153,12 +268,13 @@ bot.on('message', async (ctx) => {
     const finalShouldReply = trigger === 'mention' ? true : shouldReply;
     const finalReply = reply || (trigger === 'mention' ? '我在，但刚才没组织好语言，你再说一遍？' : '');
 
-    console.log(`AI决策: chat=${chatId}, mode=${trigger}, shouldReply=${shouldReply}, replyLength=${reply.length}`);
+    console.log(`AI决策: chat=${chatId}, mode=${trigger}, shouldReply=${shouldReply}, replyLength=${reply.length}, sticker=${sticker}`);
 
     if (finalShouldReply && finalReply) {
       // 模拟打字延迟，不要瞬间秒回，显得更自然
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
       await ctx.reply(finalReply);
+      await maybeSendSticker(ctx, sticker);
       pushMessage(chatId, { user: '[你]', text: finalReply, ts: Date.now(), fromBot: true });
       markBotReplied(chatId);
     }
@@ -184,7 +300,7 @@ setInterval(async () => {
 
     if (idleFor > IDLE_THRESHOLD_MS && sinceLastIdlePrompt > IDLE_COOLDOWN_MS) {
       try {
-        const { shouldReply, reply } = await decideAndReply({
+        const { shouldReply, reply, sticker } = await decideAndReply({
           persona: process.env.PERSONA_PROMPT || DEFAULT_PERSONA,
           messages: state.messages,
           mode: 'idle',
@@ -194,6 +310,7 @@ setInterval(async () => {
 
         if (shouldReply && reply) {
           await bot.telegram.sendMessage(chatId, reply);
+          await maybeSendStickerToChat(chatId, sticker);
           pushMessage(chatId, { user: '[你]', text: reply, ts: Date.now(), fromBot: true });
           markBotReplied(chatId);
         }

@@ -294,6 +294,14 @@ AI_MAX_OUTPUT_TOKENS=120
 AI_MODEL_RANDOM=
 AI_MODEL_IDLE=
 
+# 安全：限制机器人只在指定群使用；留空则不限制
+ALLOWED_CHAT_IDS=
+
+# 贴纸：群内可用 /sticker_add 添加；这里也可以配置全局贴纸池
+STICKER_IDS=
+STICKER_REPLY_CHANCE=0.15
+DATA_DIR=/app/data
+
 # 降低主动发言频率
 RANDOM_REPLY_CHANCE=0.02
 MIN_REPLY_INTERVAL_SECONDS=180
@@ -313,6 +321,10 @@ MAX_HISTORY=25
 | `AI_MAX_OUTPUT_TOKENS` | AI 每次最多输出多少 token，群聊建议 80-120 |
 | `AI_MODEL_RANDOM` | 随机插话单独使用的模型，可以填便宜模型 |
 | `AI_MODEL_IDLE` | 冷场复活单独使用的模型，可以填便宜模型 |
+| `ALLOWED_CHAT_IDS` | 只允许指定群使用机器人，防止被陌生人拉进其他群烧额度 |
+| `STICKER_IDS` | 全局贴纸池，多个贴纸 file_id 用英文逗号分隔 |
+| `STICKER_REPLY_CHANCE` | AI 判断适合发贴纸时，实际发送贴纸的概率 |
+| `DATA_DIR` | 持久化数据目录，贴纸池会保存在这里 |
 | `RANDOM_REPLY_CHANCE` | 普通聊天时随机插话概率，越大越活跃，也越费钱 |
 | `MIN_REPLY_INTERVAL_SECONDS` | 两次主动发言最少间隔多少秒 |
 | `MIN_MSGS_BETWEEN_REPLIES` | 距离上次发言至少过多少条群消息才会再次插话 |
@@ -327,6 +339,65 @@ RANDOM_REPLY_CHANCE=0.05
 ```
 
 不建议一开始设置太高，比如 `0.2`、`0.5`，容易刷屏，也更费额度。
+
+### 限制机器人只能在指定群使用
+
+为了防止机器人被陌生人拉到其他群乱触发、烧额度，建议配置 `ALLOWED_CHAT_IDS`。
+
+先在目标群里发送：
+
+```text
+/chat_id
+```
+
+机器人会返回当前群 ID，例如：
+
+```text
+-1001234567890
+```
+
+然后编辑 `.env`：
+
+```env
+ALLOWED_CHAT_IDS=-1001234567890
+```
+
+多个群用英文逗号分隔：
+
+```env
+ALLOWED_CHAT_IDS=-1001234567890,-1009876543210
+```
+
+修改后重启：
+
+```bash
+docker compose restart
+```
+
+### 添加 AI 可发送的贴纸
+
+不用去服务器改配置，直接在群里操作：
+
+1. 在群里发一个你想让机器人使用的贴纸。
+2. 管理员回复这条贴纸，发送：
+
+   ```text
+   /sticker_add
+   ```
+
+3. 查看当前群贴纸池：
+
+   ```text
+   /sticker_list
+   ```
+
+4. 如果想清空当前群贴纸池：
+
+   ```text
+   /sticker_clear
+   ```
+
+贴纸池会保存在 Docker 数据卷里，容器重启不会丢。
 
 ---
 
@@ -365,6 +436,12 @@ docker compose logs -f
 查看自己的 Telegram 用户 ID。如果机器人一直提示“只有管理员可以操作”，可以把这个 ID 填进 `.env` 的 `ADMIN_USER_IDS`。
 
 ```text
+/chat_id
+```
+
+查看当前群 ID。如果你想限制机器人只在指定群可用，把这个 ID 填进 `.env` 的 `ALLOWED_CHAT_IDS`。
+
+```text
 /ai_on
 ```
 
@@ -400,6 +477,30 @@ docker compose logs -f
 ```
 
 测试 AI 接口是否正常。如果 @ 机器人没反应，先用这个命令看中转站接口有没有报错。
+
+```text
+/sticker_id
+```
+
+回复一条贴纸发送这个命令，查看贴纸的 `file_id`。
+
+```text
+/sticker_add
+```
+
+管理员回复一条贴纸发送这个命令，把贴纸加入当前群的贴纸池。以后 AI 判断适合发贴纸时，会从贴纸池随机挑一个发送。
+
+```text
+/sticker_list
+```
+
+管理员查看当前群已经添加了多少贴纸。
+
+```text
+/sticker_clear
+```
+
+管理员清空当前群贴纸池。贴纸池保存在 Docker 数据卷里，重启不会丢。
 
 ---
 

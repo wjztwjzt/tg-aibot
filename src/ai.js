@@ -79,10 +79,11 @@ function parseDecision(raw) {
     return {
       shouldReply: Boolean(parsed.should_reply),
       reply: truncateText(parsed.reply || '', 300),
+      sticker: Boolean(parsed.sticker),
     };
   } catch (e) {
     const fallback = truncateText(raw.trim(), 300);
-    return { shouldReply: fallback.length > 0, reply: fallback };
+    return { shouldReply: fallback.length > 0, reply: fallback, sticker: false };
   }
 }
 
@@ -135,8 +136,8 @@ async function decideAndReply({ persona, messages, mode }) {
 
 你会看到最近的群聊记录。${buildInstruction(mode)}
 请只输出一个 JSON 对象，不要包含任何其他文字、不要用 markdown 代码块包裹，格式必须是：
-{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串"}
-回复必须短，通常不要超过 40 个中文字。`;
+{"should_reply": true 或 false, "reply": "要发送的内容，如果 should_reply 为 false 则留空字符串", "sticker": true 或 false}
+回复必须短，通常不要超过 40 个中文字。只有在语气适合用贴纸时，才把 sticker 设为 true。`;
 
   const userContent = `最近聊天记录：\n${transcript || '(暂无记录)'}\n\n请给出 JSON。`;
   const body = buildRequestBody({ sys, userContent, mode });

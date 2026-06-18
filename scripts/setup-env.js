@@ -102,6 +102,11 @@ function isCommaSeparatedIds(value) {
   return value.split(',').every((id) => isIntegerText(id.trim()));
 }
 
+function isCommaSeparatedChatIds(value) {
+  if (!value) return true;
+  return value.split(',').every((id) => /^-?\d+$/.test(id.trim()));
+}
+
 function buildEnv(config) {
   return `# 从 @BotFather 获取
 BOT_TOKEN=${quoteEnv(config.botToken)}
@@ -124,11 +129,21 @@ AI_MAX_INPUT_CHARS=${quoteEnv(config.maxInputChars)}
 AI_MAX_MESSAGE_CHARS=${quoteEnv(config.maxMessageChars)}
 AI_MAX_OUTPUT_TOKENS=${quoteEnv(config.maxOutputTokens)}
 
+# 安全限制：只允许这些群使用机器人，多个群 ID 用英文逗号分隔；留空则不限制
+# 在群里发送 /chat_id 可以查看当前群 ID
+ALLOWED_CHAT_IDS=${quoteEnv(config.allowedChatIds)}
+
 # 手动管理员白名单，多个用户 ID 用英文逗号分隔；在群里发送 /my_id 可以查看自己的用户 ID
 ADMIN_USER_IDS=${quoteEnv(config.adminUserIds)}
 
 # 如果你的中转站给的是完整接口地址，也可以不用 AI_BASE_URL，直接填：
 # AI_API_URL=https://example.com/v1/chat/completions
+
+# 贴纸配置：可在群里回复贴纸发送 /sticker_add 添加到当前群贴纸池
+# STICKER_IDS 是全局贴纸池，多个 file_id 用英文逗号分隔；STICKER_REPLY_CHANCE 是 AI 想发贴纸时实际发送概率
+STICKER_IDS=${quoteEnv(config.stickerIds)}
+STICKER_REPLY_CHANCE=${quoteEnv(config.stickerReplyChance)}
+DATA_DIR=/app/data
 
 # 人设：留空则使用 src/persona.js 中的默认人设
 PERSONA_PROMPT=${quoteEnv(config.personaPrompt)}
@@ -255,13 +270,38 @@ async function main() {
     });
   }
 
+  const allowedChatIds = await askOptional({
+    title: '10. 群组白名单 ALLOWED_CHAT_IDS',
+    description: '防止机器人被陌生人拉到其他群里乱触发、烧额度。留空表示不限制；推荐启动后在目标群发 /chat_id 获取群 ID，再填回来。多个群 ID 用英文逗号分隔。',
+    question: '请输入允许使用机器人的群 ID；不知道就先留空',
+    defaultValue: '',
+    validate: isCommaSeparatedChatIds,
+    error: '群 ID 只能是数字，可以是负数，例如 -1001234567890；多个用英文逗号分隔。',
+  });
+
   const adminUserIds = await askOptional({
-    title: '10. 管理员白名单 ADMIN_USER_IDS',
+    title: '11. 管理员白名单 ADMIN_USER_IDS',
     description: '如果 Telegram 管理员判断失效，可以把你的用户 ID 写这里。启动后在群里发 /my_id 可以查看 ID。多个 ID 用英文逗号分隔。',
     question: '请输入管理员 Telegram 用户 ID；不知道就留空',
     defaultValue: '',
     validate: isCommaSeparatedIds,
     error: '管理员 ID 只能是数字，多个 ID 用英文逗号分隔，例如 123456789,987654321。',
+  });
+
+  const stickerIds = await askOptional({
+    title: '12. 全局贴纸池 STICKER_IDS',
+    description: '可以先留空。启动后在群里回复贴纸发送 /sticker_add，可以直接把贴纸加入当前群贴纸池，不用改服务器配置。',
+    question: '请输入全局贴纸 file_id，多个用英文逗号分隔；不知道就留空',
+    defaultValue: '',
+  });
+
+  const stickerReplyChance = await askOptional({
+    title: '13. 贴纸发送概率 STICKER_REPLY_CHANCE',
+    description: 'AI 判断适合发贴纸时，实际发送贴纸的概率。0 表示不发，1 表示每次都发。建议 0.15。',
+    question: '请输入贴纸发送概率，范围 0 到 1',
+    defaultValue: '0.15',
+    validate: (value) => isNumberInRange(value, 0, 1),
+    error: '请输入 0 到 1 之间的数字，例如 0.15。',
   });
 
   const maxContextMessages = await askOptional({
@@ -367,7 +407,10 @@ async function main() {
     maxInputChars,
     maxMessageChars,
     maxOutputTokens,
+    allowedChatIds,
     adminUserIds,
+    stickerIds,
+    stickerReplyChance,
     personaPrompt,
     randomReplyChance,
     minReplyIntervalSeconds,

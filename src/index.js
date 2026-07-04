@@ -135,6 +135,29 @@ function requireAllowedChat(ctx) {
   return false;
 }
 
+// 解析 AD_RULES: "关键词1,关键词2|广告意图文本;;关键词3|广告意图文本2"
+function parseAdRules() {
+  const raw = (process.env.AD_RULES || '').trim();
+  if (!raw) return [];
+  return raw.split(';;').map((rule) => {
+    const [kwPart, intent] = rule.split('|').map((s) => s.trim());
+    if (!kwPart || !intent) return null;
+    const keywords = kwPart.split(',').map((k) => k.trim()).filter(Boolean);
+    return keywords.length ? { keywords, intent } : null;
+  }).filter(Boolean);
+}
+
+function getAdContext(text) {
+  const rules = parseAdRules();
+  if (!rules.length) return null;
+  for (const rule of rules) {
+    if (rule.keywords.some((kw) => text.includes(kw))) {
+      return `【重要】有人在群里提到了相关话题，请你在回复中自然地融入以下推广信息（不要生硬、不要像广告机器人）：\n${rule.intent}`;
+    }
+  }
+  return null;
+}
+
 function getPersona(chatId) {
   const basePersona = process.env.PERSONA_PROMPT || DEFAULT_PERSONA;
   const rules = getChatConfig(chatId).personaRules || [];
@@ -440,8 +463,13 @@ bot.on('message', async (ctx) => {
     await ctx.sendChatAction('typing');
     const state = getChat(chatId);
 
+    const adCtx = getAdContext(messageText);
+    const persona = adCtx
+      ? getPersona(ctx.chat.id) + '\n\n' + adCtx
+      : getPersona(ctx.chat.id);
+
     const { shouldReply, reply, sticker, stickerTag } = await decideAndReply({
-      persona: getPersona(ctx.chat.id),
+      persona,
       messages: state.messages,
       mode: trigger,
       stickerTags: getStickerTags(chatId),
@@ -487,8 +515,14 @@ setInterval(async () => {
 
     if (idleFor > idleThresholdMs && sinceLastIdlePrompt > idleCooldownMs) {
       try {
+        const lastText = state.messages[state.messages.length - 1]?.text || '';
+        const adCtxIdle = getAdContext(lastText);
+        const personaIdle = adCtxIdle
+          ? getPersona(chatId) + '\n\n' + adCtxIdle
+          : getPersona(chatId);
+
         const { shouldReply, reply, sticker, stickerTag } = await decideAndReply({
-          persona: getPersona(chatId),
+          persona: personaIdle,
           messages: state.messages,
           mode: 'idle',
           stickerTags: getStickerTags(chatId),

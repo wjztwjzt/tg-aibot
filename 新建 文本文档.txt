@@ -1,5 +1,0 @@
- 新增群命令
-
-  - /voice_on — 开启语音回复
-  - /voice_off — 关闭语音，恢复文字
-  - /ai_set voice_enabled 0|1 — 通过 /ai_set 控制

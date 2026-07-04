@@ -1,30 +1,40 @@
 const { spawn } = require('child_process');
-const { EdgeTTS } = require('node-edge-tts');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '9lHjugDhwqoxA5MhX0az';
+const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_multilingual_v2';
 
 async function textToSpeech(text) {
-  const tts = new EdgeTTS({
-    voice: process.env.TTS_VOICE || 'zh-CN-XiaoxiaoNeural',
-    rate: process.env.TTS_RATE || 'default',
-    pitch: process.env.TTS_PITCH || 'default',
-    timeout: 15000,
-  });
-
-  const tmpDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-  fs.mkdirSync(tmpDir, { recursive: true });
-  const tmpFile = path.join(tmpDir, `.tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
-
-  try {
-    await tts.ttsPromise(text, tmpFile);
-    const mp3Buffer = fs.readFileSync(tmpFile);
-    return mp3ToOgg(mp3Buffer);
-  } catch (e) {
-    throw new Error(typeof e === 'string' ? e : (e.message || String(e)));
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
+  if (!ELEVENLABS_API_KEY) {
+    throw new Error('缺少 ELEVENLABS_API_KEY');
   }
+
+  const resp = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: ELEVENLABS_MODEL,
+        voice_settings: {
+          stability: parseFloat(process.env.ELEVENLABS_STABILITY || '0.5'),
+          similarity_boost: parseFloat(process.env.ELEVENLABS_SIMILARITY || '0.75'),
+        },
+      }),
+    }
+  );
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`ElevenLabs error ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const mp3Buffer = Buffer.from(await resp.arrayBuffer());
+  return mp3ToOgg(mp3Buffer);
 }
 
 function mp3ToOgg(mp3Buffer) {

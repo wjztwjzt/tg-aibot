@@ -1,0 +1,17 @@
+services:
+  tg-ai-bot:
+    build: .
+    container_name: tg-ai-bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - tg-ai-bot-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  tg-ai-bot-data:

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Telegram 群组 AI 气氛机器人。基于 Telegraf（长轮询模式）+ OpenAI 兼容 API，根据群聊上下文在三种场景下发言：被 @ 一定回复、普通聊天随机插话、冷场时主动抛话题。
 
+v2.0 新增：Microsoft Edge TTS 语音回复（晓晓/晓依女声）、关键字"小可"触发回复。
+
 ## 常用命令
 
 ```bash

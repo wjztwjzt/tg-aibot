@@ -9,6 +9,7 @@ async function textToSpeech(text) {
     voice: process.env.TTS_VOICE || 'zh-CN-XiaoxiaoNeural',
     rate: process.env.TTS_RATE || 'default',
     pitch: process.env.TTS_PITCH || 'default',
+    timeout: 15000,
   });
 
   const tmpDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -19,6 +20,8 @@ async function textToSpeech(text) {
     await tts.ttsPromise(text, tmpFile);
     const mp3Buffer = fs.readFileSync(tmpFile);
     return mp3ToOgg(mp3Buffer);
+  } catch (e) {
+    throw new Error(typeof e === 'string' ? e : (e.message || String(e)));
   } finally {
     try { fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
   }

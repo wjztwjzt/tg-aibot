@@ -99,9 +99,12 @@ async function sendVoiceOrText(ctx, chatId, text) {
     return ctx.reply(text);
   }
   try {
+    console.log('TTS: 开始合成语音, textLength=%d', text.length);
     await ctx.sendChatAction('record_voice');
     const voiceBuffer = await textToSpeech(text);
+    console.log('TTS: 合成完成, voiceSize=%d', voiceBuffer.length);
     await ctx.replyWithVoice({ source: voiceBuffer });
+    console.log('TTS: 语音已发送');
   } catch (err) {
     console.error('TTS 失败，回退文字:', err.message);
     await ctx.reply(text);
@@ -114,9 +117,12 @@ async function sendVoiceOrTextToChat(chatId, text) {
     return bot.telegram.sendMessage(chatId, text);
   }
   try {
+    console.log('TTS: 开始合成语音(idle), textLength=%d', text.length);
     await bot.telegram.sendChatAction(chatId, 'record_voice');
     const voiceBuffer = await textToSpeech(text);
+    console.log('TTS: 合成完成(idle), voiceSize=%d', voiceBuffer.length);
     await bot.telegram.sendVoice(chatId, { source: voiceBuffer });
+    console.log('TTS: 语音已发送(idle)');
   } catch (err) {
     console.error('TTS 失败，回退文字:', err.message);
     await bot.telegram.sendMessage(chatId, text);

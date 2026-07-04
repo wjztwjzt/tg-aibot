@@ -36,7 +36,7 @@ function isMention(ctx, botInfo) {
 }
 
 function hasKeyword(ctx) {
-  const keyword = (process.env.BOT_KEYWORD || '').trim();
+  const keyword = (process.env.BOT_KEYWORD || '小可').trim();
   if (!keyword) return false;
   const text = ctx.message?.text || '';
   return text.includes(keyword);

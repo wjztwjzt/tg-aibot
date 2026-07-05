@@ -152,7 +152,7 @@ function getAdContext(text) {
   if (!rules.length) return null;
   for (const rule of rules) {
     if (rule.keywords.some((kw) => text.includes(kw))) {
-      return `【重要】有人在群里提到了相关话题，请你在回复中自然地融入以下推广信息（不要生硬、不要像广告机器人）：\n${rule.intent}`;
+      return `【注意】先正常回应对方的话，像普通群友聊天一样。然后在回复的结尾，自然地顺带提一句：${rule.intent}。千万不要把推广信息当成唯一回复内容，也不要复读原文。`;
     }
   }
   return null;

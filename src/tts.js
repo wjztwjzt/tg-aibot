@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '9lHjugDhwqoxA5MhX0az';
-const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_multilingual_v2';
+const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
 
 async function textToSpeech(text) {
   if (!ELEVENLABS_API_KEY) {

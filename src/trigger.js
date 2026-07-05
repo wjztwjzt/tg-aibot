@@ -42,6 +42,16 @@ function hasKeyword(ctx) {
   return text.includes(keyword);
 }
 
+function hasAdKeyword(ctx) {
+  const raw = (process.env.AD_RULES || '').trim();
+  if (!raw) return false;
+  const text = ctx.message?.text || '';
+  return raw.split(';;').some((rule) => {
+    const kwPart = rule.split('|')[0] || '';
+    return kwPart.split(',').some((kw) => text.includes(kw.trim()));
+  });
+}
+
 // 返回 'mention' | 'random' | null
 function decideTrigger(ctx, botInfo) {
   const chatId = ctx.chat.id;
@@ -51,6 +61,7 @@ function decideTrigger(ctx, botInfo) {
 
   if (isMention(ctx, botInfo)) return 'mention';
   if (hasKeyword(ctx)) return 'mention';
+  if (hasAdKeyword(ctx)) return 'mention';
 
   const now = Date.now();
   const cooledDown = now - state.lastBotReplyAt > config.minReplyIntervalSeconds * 1000;

@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git reset *)",
+      "Bash(echo \".claude/\")",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(curl -sI https://github.com)",
+      "Bash(ssh *)",
+      "Bash(scp src/tts.js src/index.js src/trigger.js src/chatConfigStore.js Dockerfile package.json .env.example us4g:/data/tg-aibot/)",
+      "Bash(npm view *)",
+      "Bash(npm search *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const tts = require\\('node-edge-tts'\\); console.log\\(Object.keys\\(tts\\)\\); console.log\\(typeof tts\\); console.log\\(typeof tts.toFile || typeof tts.synthesize || 'unknown'\\)\")",
+      "Bash(node -e \"const tts = require\\('node-edge-tts'\\); console.log\\('exports:', Object.keys\\(tts\\)\\); console.log\\('type:', typeof tts\\);\")",
+      "Bash(scp package.json .env.example us4g:/data/tg-aibot/)",
+      "Bash(scp src/tts.js us4g:/data/tg-aibot/src/)",
+      "Bash(git commit --amend -m ' *)",
+      "Bash(scp src/trigger.js src/index.js us4g:/data/tg-aibot/src/)",
+      "Bash(git tag -a v2.0 -m ' *)",
+      "Bash(git commit *)",
+      "Bash(scp src/index.js .env.example us4g:/data/tg-aibot/src/)",
+      "Bash(scp .env.example us4g:/data/tg-aibot/)",
+      "Bash(git tag *)",
+      "Bash(git checkout *)",
+      "Bash(ls -la \"新建 文本文档.txt\")",
+      "WebSearch",
+      "Bash(git fetch *)",
+      "Bash(gh api *)",
+      "Bash(git branch *)",
+      "Bash(git ls-tree *)",
+      "Bash(git merge *)",
+      "Bash(rm -f \"新建 文本文档.txt\")",
+      "Bash(ls *文*)"
+    ]
+  }
+}

@@ -46,8 +46,10 @@ async function textToSpeech(text) {
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
+  const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload = JSON.stringify({
     Text: text,
+    SessionId: sessionId,
     VoiceType: parseInt(TTS_VOICE_TYPE, 10),
     Codec: 'mp3',
     SampleRate: 16000,

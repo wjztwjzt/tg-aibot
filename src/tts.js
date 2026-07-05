@@ -1,39 +1,93 @@
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '9lHjugDhwqoxA5MhX0az';
-const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
+const TENCENT_SECRET_ID = process.env.TENCENT_SECRET_ID || '';
+const TENCENT_SECRET_KEY = process.env.TENCENT_SECRET_KEY || '';
+const TTS_VOICE_TYPE = process.env.TTS_VOICE_TYPE || '502001'; // 智小柔
+
+function sign(secretId, secretKey, timestamp, payload) {
+  const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
+  const service = 'tts';
+  const host = 'tts.tencentcloudapi.com';
+  const algorithm = 'TC3-HMAC-SHA256';
+  const httpMethod = 'POST';
+  const canonicalUri = '/';
+  const canonicalQueryString = '';
+
+  const contentType = 'application/json; charset=utf-8';
+  const signedHeaders = 'content-type;host';
+  const hashedPayload = crypto.createHash('sha256').update(payload).digest('hex');
+
+  const canonicalHeaders = `content-type:${contentType}\nhost:${host}\n`;
+  const canonicalRequest = [
+    httpMethod,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    hashedPayload,
+  ].join('\n');
+
+  const credentialScope = `${date}/${service}/tc3_request`;
+  const hashedCanonicalRequest = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
+  const stringToSign = [algorithm, timestamp, credentialScope, hashedCanonicalRequest].join('\n');
+
+  const kDate = crypto.createHmac('sha256', `TC3${secretKey}`).update(date).digest();
+  const kService = crypto.createHmac('sha256', kDate).update(service).digest();
+  const kSigning = crypto.createHmac('sha256', kService).update('tc3_request').digest();
+  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+  return `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+}
 
 async function textToSpeech(text) {
-  if (!ELEVENLABS_API_KEY) {
-    throw new Error('缺少 ELEVENLABS_API_KEY');
+  if (!TENCENT_SECRET_ID || !TENCENT_SECRET_KEY) {
+    throw new Error('缺少 TENCENT_SECRET_ID / TENCENT_SECRET_KEY');
   }
 
-  const resp = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: ELEVENLABS_MODEL,
-        voice_settings: {
-          stability: parseFloat(process.env.ELEVENLABS_STABILITY || '0.5'),
-          similarity_boost: parseFloat(process.env.ELEVENLABS_SIMILARITY || '0.75'),
-        },
-      }),
-    }
-  );
+  const timestamp = Math.floor(Date.now() / 1000);
+  const payload = JSON.stringify({
+    Text: text,
+    VoiceType: parseInt(TTS_VOICE_TYPE, 10),
+    Codec: 'mp3',
+    SampleRate: 16000,
+    Speed: parseFloat(process.env.TTS_SPEED || '0'),
+    Volume: parseFloat(process.env.TTS_VOLUME || '0'),
+    PrimaryLanguage: 1,
+  });
+
+  const authorization = sign(TENCENT_SECRET_ID, TENCENT_SECRET_KEY, timestamp, payload);
+
+  const resp = await fetch('https://tts.tencentcloudapi.com', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Host': 'tts.tencentcloudapi.com',
+      'X-TC-Action': 'TextToVoice',
+      'X-TC-Version': '2019-08-23',
+      'X-TC-Timestamp': String(timestamp),
+      'X-TC-Region': 'ap-guangzhou',
+      'Authorization': authorization,
+    },
+    body: payload,
+  });
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`ElevenLabs error ${resp.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`腾讯云TTS HTTP ${resp.status}: ${errText.slice(0, 200)}`);
   }
 
-  const mp3Buffer = Buffer.from(await resp.arrayBuffer());
+  const data = await resp.json();
+  if (data.Response.Error) {
+    throw new Error(`腾讯云TTS error ${data.Response.Error.Code}: ${data.Response.Error.Message}`);
+  }
+
+  const audioBase64 = data.Response.Audio;
+  if (!audioBase64) {
+    throw new Error('腾讯云TTS 返回空音频');
+  }
+
+  const mp3Buffer = Buffer.from(audioBase64, 'base64');
   return mp3ToOgg(mp3Buffer);
 }
 
